@@ -1,0 +1,19 @@
+## Patches with a number < 100 are applied in debian.
+## Ubuntu patches start with 100.
+001_fedora_extramodes.patch
+02_kbsd-input-devd.diff
+03_static-nettle.diff
+05_Revert-Unload-submodules.diff
+06_use-intel-only-on-pre-gen4.diff
+07_use-modesetting-driver-by-default-on-GeForce.diff
+present-Check-for-NULL-to-prevent-crash.patch
+deepin-fix-mips64el-no-bootvga.patch
+0001-using-zx-for-zhaoxin-chips-chx001-chx002.patch
+
+0001-fix-add-jngja-support-mwv206.patch
+0001-fix-add-709-graphic-card-support.patch
+deepin-fix-10th-GPU-screen-is-not-bright.patch
+0001-Allow-selection-of-the-primary-bus-device-driver.patch
+0001-fix-the-problem-that-huawei-cloud-graphics-card-udev-busid-fails-to-obtain.patch
+0001-feat-Xrecord-add-touch-support.patch
+0001-add-Glenfly-pci-ids-for-xorg.diff

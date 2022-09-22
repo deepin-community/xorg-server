@@ -1,0 +1,31 @@
+diff --git a/hw/xfree86/common/xf86pciBus.c b/hw/xfree86/common/xf86pciBus.c
+index 812ee9478..4bf108378 100644
+--- a/hw/xfree86/common/xf86pciBus.c
++++ b/hw/xfree86/common/xf86pciBus.c
+@@ -1267,12 +1267,26 @@ xf86VideoPtrToDriverList(struct pci_device *dev, XF86MatchedDrivers *md)
+     case 0x0709:
+         driverList[0] = "csmicro";
+         break;
++    case 0x6766:
++        switch (dev->device_id) {
++        case 0x3d00:
++            driverList[0] = "arise";
++            break;
++        default:
++            driverList[0] = "arise";
++            break;
++        }
++        break;
+     case 0x1d17:
+         switch (dev->device_id) {
+         case 0x3a03:
+         case 0x3a04:
+             driverList[0] = "zx";
+             break;
++        case 0x3d00:
++        case 0x3d02:
++            driverList[0] = "arise";
++            break;
+         default:
+             driverList[0] = "zx";
+             break;

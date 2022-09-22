@@ -1,0 +1,34 @@
+From: Huxiaodong <huxiaodong@uniontech.com>
+Date: Tue, 2 Nov 2021 9:56:20
+Subject: [PATCH] If the GPU uses efifb driver, xorg only recognizes PCI devices. At this time, FB and PCI devices need to coexist at the same time.
+
+diff --git a/hw/xfree86/common/xf86Bus.c b/hw/xfree86/common/xf86Bus.c
+index 6bbf489ab..f2d9c46ce 100644
+--- a/hw/xfree86/common/xf86Bus.c
++++ b/hw/xfree86/common/xf86Bus.c
+@@ -536,17 +536,18 @@ xf86GetDevFromEntity(int entityIndex, int instance)
+ void
+ xf86PostProbe(void)
+ {
+-    if (fbSlotClaimed && (
++    if ((fbSlotClaimed  ||
++#ifdef XSERVER_LIBPCIACCESS
++                            pciSlotClaimed
++#else
++                            TRUE
++#endif
++        ) && (
+ #if (defined(__sparc__) || defined(__sparc)) && !defined(__OpenBSD__)
+                              sbusSlotClaimed ||
+ #endif
+ #ifdef XSERVER_PLATFORM_BUS
+-                             platformSlotClaimed ||
+-#endif
+-#ifdef XSERVER_LIBPCIACCESS
+-                             pciSlotClaimed
+-#else
+-                             TRUE
++                             platformSlotClaimed
+ #endif
+         ))
+         FatalError("Cannot run in framebuffer mode. Please specify busIDs "
