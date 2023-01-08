@@ -17,3 +17,4 @@ deepin-fix-10th-GPU-screen-is-not-bright.patch
 0001-fix-the-problem-that-huawei-cloud-graphics-card-udev-busid-fails-to-obtain.patch
 0001-feat-Xrecord-add-touch-support.patch
 0001-add-Glenfly-pci-ids-for-xorg.diff
+fix-gcc12-build.patch

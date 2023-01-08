@@ -1,0 +1,31 @@
+Description: Fix gcc12 build
+Author: Z8MAN8 <1468559561@qq.com>
+--- a/render/picture.c
++++ b/render/picture.c
+@@ -865,7 +865,7 @@
+     }
+ 
+     pPicture->id = pid;
+-    pPicture->pSourcePict = (SourcePictPtr) malloc(sizeof(PictSolidFill));
++    pPicture->pSourcePict = (SourcePictPtr) malloc(sizeof(SourcePict));
+     if (!pPicture->pSourcePict) {
+         *error = BadAlloc;
+         free(pPicture);
+@@ -896,7 +896,7 @@
+     }
+ 
+     pPicture->id = pid;
+-    pPicture->pSourcePict = (SourcePictPtr) malloc(sizeof(PictLinearGradient));
++    pPicture->pSourcePict = (SourcePictPtr) malloc(sizeof(SourcePict));
+     if (!pPicture->pSourcePict) {
+         *error = BadAlloc;
+         free(pPicture);
+@@ -979,7 +979,7 @@
+     }
+ 
+     pPicture->id = pid;
+-    pPicture->pSourcePict = (SourcePictPtr) malloc(sizeof(PictConicalGradient));
++    pPicture->pSourcePict = (SourcePictPtr) malloc(sizeof(SourcePict));
+     if (!pPicture->pSourcePict) {
+         *error = BadAlloc;
+         free(pPicture);
