@@ -150,53 +150,7 @@ EventToCore(InternalEvent *event, xEvent **core_out, int *count_out)
     }
         break;
     case ET_ProximityIn:
-    {
-        DeviceEvent *e = &event->device_event;
-
-        if (e->detail.key > 0xFF) {
-            ret = BadMatch;
-            goto out;
-        }
-
-        core = calloc(1, sizeof(*core));
-        if (!core)
-            return BadAlloc;
-        count = 1;
-        core->u.u.type = ET_ProximityIn;
-        core->u.u.detail = e->detail.key & 0xFF;
-        core->u.keyButtonPointer.time = e->time;
-        core->u.keyButtonPointer.rootX = e->root_x;
-        core->u.keyButtonPointer.rootY = e->root_y;
-        core->u.keyButtonPointer.state = e->corestate;
-        core->u.keyButtonPointer.root = e->root;
-        EventSetKeyRepeatFlag(core, (e->type == ET_KeyPress && e->key_repeat));
-        ret = Success;
-    }
-        break;
     case ET_ProximityOut:
-    {
-        DeviceEvent *e = &event->device_event;
-
-        if (e->detail.key > 0xFF) {
-            ret = BadMatch;
-            goto out;
-        }
-
-        core = calloc(1, sizeof(*core));
-        if (!core)
-            return BadAlloc;
-        count = 1;
-        core->u.u.type = ET_ProximityOut;
-        core->u.u.detail = e->detail.key & 0xFF;
-        core->u.keyButtonPointer.time = e->time;
-        core->u.keyButtonPointer.rootX = e->root_x;
-        core->u.keyButtonPointer.rootY = e->root_y;
-        core->u.keyButtonPointer.state = e->corestate;
-        core->u.keyButtonPointer.root = e->root;
-        EventSetKeyRepeatFlag(core, (e->type == ET_KeyPress && e->key_repeat));
-        ret = Success;
-    }
-        break;
     case ET_RawKeyPress:
     case ET_RawKeyRelease:
     case ET_RawButtonPress:

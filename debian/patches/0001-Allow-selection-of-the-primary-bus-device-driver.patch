@@ -23,7 +23,7 @@ diff --git a/hw/xfree86/common/xf86Config.c b/hw/xfree86/common/xf86Config.c
 index 5d814c148..e230b73d1 100644
 --- a/hw/xfree86/common/xf86Config.c
 +++ b/hw/xfree86/common/xf86Config.c
-@@ -646,6 +646,7 @@ typedef enum {
+@@ -646,6 +646,7 @@
      FLAG_MAX_CLIENTS,
      FLAG_IGLX,
      FLAG_DEBUG,
@@ -31,7 +31,7 @@ index 5d814c148..e230b73d1 100644
  } FlagValues;
  
  /**
-@@ -705,6 +706,8 @@ static OptionInfoRec FlagOptions[] = {
+@@ -705,6 +706,8 @@
       {0}, FALSE},
      {FLAG_DEBUG, "Debug", OPTV_STRING,
       {0}, FALSE},
@@ -40,18 +40,18 @@ index 5d814c148..e230b73d1 100644
      {-1, NULL, OPTV_NONE,
       {0}, FALSE},
  };
-@@ -963,6 +966,16 @@ configServerFlags(XF86ConfFlagsPtr flagsconf, XF86OptionPtr layoutopts)
+@@ -963,6 +966,16 @@
      }
      xf86Msg(from, "Max clients allowed: %i, resource mask: 0x%x\n",
  	    LimitClients, RESOURCE_ID_MASK);
 +
 +#ifdef XSERVER_PLATFORM_BUS
 +    if (xf86Info.primaryBusDrvFrom != X_CMDLINE) {
-+        xf86Info.primaryBusDrv = xf86GetOptValString(FlagOptions,
-+                                                     FLAG_PRIMARY_BUS_DRIVER);
++	xf86Info.primaryBusDrv = xf86GetOptValString(FlagOptions,
++						     FLAG_PRIMARY_BUS_DRIVER);
 +
-+        xf86Info.primaryBusDrvFrom = xf86Info.primaryBusDrv ? X_CONFIG :
-+                                                              X_DEFAULT;
++	xf86Info.primaryBusDrvFrom = xf86Info.primaryBusDrv ? X_CONFIG :
++							      X_DEFAULT;
 +    }
 +#endif
  }
@@ -61,7 +61,7 @@ diff --git a/hw/xfree86/common/xf86Globals.c b/hw/xfree86/common/xf86Globals.c
 index 65a3192df..71c7af7dc 100644
 --- a/hw/xfree86/common/xf86Globals.c
 +++ b/hw/xfree86/common/xf86Globals.c
-@@ -133,6 +133,9 @@ xf86InfoRec xf86Info = {
+@@ -134,6 +134,9 @@
      .autoAddGPU = FALSE,
  #endif
      .autoBindGPU = TRUE,
@@ -75,23 +75,23 @@ diff --git a/hw/xfree86/common/xf86Init.c b/hw/xfree86/common/xf86Init.c
 index 5695e71ac..2ffc4751f 100644
 --- a/hw/xfree86/common/xf86Init.c
 +++ b/hw/xfree86/common/xf86Init.c
-@@ -1182,6 +1182,15 @@ ddxProcessArgument(int argc, char **argv, int i)
+@@ -1182,6 +1182,15 @@
          return 1;
      }
  
 +#ifdef XSERVER_PLATFORM_BUS
 +    if (!strcmp(argv[i], "-primaryBusDrv")) {
-+        CHECK_FOR_REQUIRED_ARGUMENTS(1);
-+        xf86Info.primaryBusDrv = argv[i];
-+        xf86Info.primaryBusDrvFrom = X_CMDLINE;
-+        return 2;
++	CHECK_FOR_REQUIRED_ARGUMENTS(1);
++	xf86Info.primaryBusDrv = argv[i];
++	xf86Info.primaryBusDrvFrom = X_CMDLINE;
++	return 2;
 +    }
 +#endif
 +
      /* OS-specific processing */
      return xf86ProcessArgument(argc, argv, i);
  }
-@@ -1251,6 +1260,9 @@ ddxUseMsg(void)
+@@ -1251,6 +1260,9 @@
      ErrorF
          ("-novtswitch            don't automatically switch VT at reset & exit\n");
      ErrorF("-sharevts              share VTs with another X server\n");
@@ -105,7 +105,7 @@ diff --git a/hw/xfree86/common/xf86Privstr.h b/hw/xfree86/common/xf86Privstr.h
 index 31861148f..2d7b5b5c4 100644
 --- a/hw/xfree86/common/xf86Privstr.h
 +++ b/hw/xfree86/common/xf86Privstr.h
-@@ -97,6 +97,10 @@ typedef struct {
+@@ -97,6 +97,10 @@
      Bool autoAddGPU;
      const char *debug;
      Bool autoBindGPU;
@@ -120,27 +120,26 @@ diff --git a/hw/xfree86/common/xf86platformBus.c b/hw/xfree86/common/xf86platfor
 index 45028f7a6..5834ce04b 100644
 --- a/hw/xfree86/common/xf86platformBus.c
 +++ b/hw/xfree86/common/xf86platformBus.c
-@@ -756,6 +756,20 @@ void xf86platformVTProbe(void)
+@@ -756,6 +756,20 @@
  
  void xf86platformPrimary(void)
  {
 +    if (xf86Info.primaryBusDrv) {
-+        int i;
++	int i;
 +
-+        for (i = 0; i < xf86_num_platform_devices; i++) {
-+            if (!strcmp(xf86_platform_devices[i].attribs->driver, xf86Info.primaryBusDrv)) {
-+                primaryBus.id.plat = &xf86_platform_devices[i];
-+                primaryBus.type = BUS_PLATFORM;
-+                xf86Msg(X_INFO, "Primary bus/device is %s (driver \"%s\")\n", primaryBus.id.plat->attribs->syspath, primaryBus.id.plat->attribs->driver);
-+		        break;
-+            }
-+        }
-+        if (i == xf86_num_platform_devices)
-+            xf86Msg(X_WARNING, "Couldn't find a primary bus/device with driver \"%s\"\n", xf86Info.primaryBusDrv);
++	for (i = 0; i < xf86_num_platform_devices; i++) {
++	    if (!strcmp(xf86_platform_devices[i].attribs->driver, xf86Info.primaryBusDrv)) {
++		primaryBus.id.plat = &xf86_platform_devices[i];
++		primaryBus.type = BUS_PLATFORM;
++		xf86Msg(X_INFO, "Primary bus/device is %s (driver \"%s\")\n", primaryBus.id.plat->attribs->syspath, primaryBus.id.plat->attribs->driver);
++			break;
++	    }
++	}
++	if (i == xf86_num_platform_devices)
++	    xf86Msg(X_WARNING, "Couldn't find a primary bus/device with driver \"%s\"\n", xf86Info.primaryBusDrv);
 +    }
      /* use the first platform device as a fallback */
      if (primaryBus.type == BUS_NONE) {
          xf86Msg(X_INFO, "no primary bus or device found\n");
 -- 
 2.20.1
-

@@ -17,19 +17,18 @@ diff --git a/hw/xfree86/common/xf86pciBus.c b/hw/xfree86/common/xf86pciBus.c
 index aeeed8be6..98862e2e1 100644
 --- a/hw/xfree86/common/xf86pciBus.c
 +++ b/hw/xfree86/common/xf86pciBus.c
-@@ -1073,6 +1073,12 @@ xf86VideoPtrToDriverList(struct pci_device *dev, XF86MatchedDrivers *md)
+@@ -1076,6 +1076,12 @@
      const char *driverList[5] = { NULL, NULL, NULL, NULL, NULL };
  
      switch (dev->vendor_id) {
-+        /* Jingjia Graphic Card */
++	/* Jingjia Graphic Card */
 +    case 0x0731:
-+        if (dev->device_id == 0x7200)
-+            driverList[0] = "mwv206";
-+        /* JM72xx Card */
-+        break;
++	if (dev->device_id == 0x7200)
++	    driverList[0] = "mwv206";
++	/* JM72xx Card */
++	break;
          /* AMD Geode LX */
      case 0x1022:
          if (dev->device_id == 0x2081)
 -- 
 2.20.1
-

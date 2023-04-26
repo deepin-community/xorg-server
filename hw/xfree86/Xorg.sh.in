@@ -4,24 +4,6 @@
 # This allows distros to put the suid wrapper in a separate package.
 
 basedir=@SUID_WRAPPER_DIR@
-LOG_FILE="/var/log/.fst.log"
-
-if [ -e $basedir/.gpu_id ]; then
-    GPU_ID_C=`lspci -nv  | grep VGA | awk -F " " '{print $3}'`
-    echo "gpu id new:$GPU_ID_C" >$LOG_FILE 2>&1
-    GPU_ID_B=`cat $basedir/.gpu_id`
-    echo "gpu id old:$GPU_ID_B" >$LOG_FILE 2>&1
-    if [ "$GPU_ID_C" = "$GPU_ID_B" ]; then
-        echo "gpu id no change" >$LOG_FILE 2>&1
-    else
-        lspci -nv  | grep VGA | awk -F " " '{print $3}' > $basedir/.gpu_id
-        /usr/bin/gpu_mem_check 1048576 5 1 >$LOG_FILE 2>&1
-    fi
-else
-    lspci -nv  | grep VGA | awk -F " " '{print $3}' > $basedir/.gpu_id
-    /usr/bin/gpu_mem_check 1048576 5 1 >$LOG_FILE 2>&1
-fi
-
 if [ -x "$basedir"/Xorg.wrap ]; then
 	exec "$basedir"/Xorg.wrap "$@"
 else
