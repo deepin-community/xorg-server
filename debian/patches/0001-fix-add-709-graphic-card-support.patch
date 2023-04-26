@@ -6,19 +6,19 @@ MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 select csmicro other than modesetting for 709 graphic card
-Log: 使709显卡默认使用 csmicro_drv.so 而不是 modesetting_drv.so
+Log: Make 709 graphics cards use csmicro_drv.so instead of modesetting_drv.so by default
 Signed-off-by: liduanjun <liduanjun@uniontech.com>
 Change-Id: I25ec75c5b9b4e5313c3e2197e1f932beb3d94433
 
---- xorg-server-1.20.4.11.orig/hw/xfree86/common/xf86pciBus.c
-+++ xorg-server-1.20.4.11/hw/xfree86/common/xf86pciBus.c
-@@ -1303,6 +1303,9 @@ xf86VideoPtrToDriverList(struct pci_devi
+--- a/hw/xfree86/common/xf86pciBus.c
++++ b/hw/xfree86/common/xf86pciBus.c
+@@ -1308,6 +1308,9 @@
          else
              driverList[0] = "xgi";
          break;
 +    case 0x0709:
-+        driverList[0] = "csmicro";
-+        break;
++	driverList[0] = "csmicro";
++	break;
      case 0x1d17:
-         switch (dev->device_id) {
-         case 0x3a03:
+ 	switch (dev->device_id) {
+ 	case 0x3a03:

@@ -12,7 +12,7 @@ diff --git a/hw/xfree86/common/xf86Bus.c b/hw/xfree86/common/xf86Bus.c
 index bd3e4e3..b065b8b 100644
 --- a/hw/xfree86/common/xf86Bus.c
 +++ b/hw/xfree86/common/xf86Bus.c
-@@ -201,6 +201,7 @@ xf86BusProbe(void)
+@@ -241,6 +241,7 @@
  {
  #ifdef XSERVER_PLATFORM_BUS
      xf86platformProbe();
@@ -20,7 +20,7 @@ index bd3e4e3..b065b8b 100644
      if (ServerIsNotSeat0() && xf86_num_platform_devices > 0)
          return;
  #endif
-@@ -210,9 +211,6 @@ xf86BusProbe(void)
+@@ -250,9 +251,6 @@
  #if (defined(__sparc__) || defined(__sparc)) && !defined(__OpenBSD__)
      xf86SbusProbe();
  #endif
@@ -32,4 +32,3 @@ index bd3e4e3..b065b8b 100644
  /*
 -- 
 2.20.1
-

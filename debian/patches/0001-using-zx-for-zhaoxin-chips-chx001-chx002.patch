@@ -11,24 +11,23 @@ diff --git a/hw/xfree86/common/xf86pciBus.c b/hw/xfree86/common/xf86pciBus.c
 index 6575c4ec8..b74d1dc8c 100644
 --- a/hw/xfree86/common/xf86pciBus.c
 +++ b/hw/xfree86/common/xf86pciBus.c
-@@ -1264,6 +1264,17 @@ xf86VideoPtrToDriverList(struct pci_device *dev, XF86MatchedDrivers *md)
+@@ -1302,6 +1302,17 @@
          else
              driverList[0] = "xgi";
          break;
 +    case 0x1d17:
-+        switch (dev->device_id) {
-+        case 0x3a03:
-+        case 0x3a04:
-+            driverList[0] = "zx";
-+            break;
-+        default:
-+            driverList[0] = "zx";
-+            break;
-+        }
-+        break;
++	switch (dev->device_id) {
++	case 0x3a03:
++	case 0x3a04:
++	    driverList[0] = "zx";
++	    break;
++	default:
++	    driverList[0] = "zx";
++	    break;
++	}
++	break;
      default:
          break;
      }
 -- 
 2.20.1
-

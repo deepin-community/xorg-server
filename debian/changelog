@@ -1,8 +1,61 @@
-xorg-server (2:21.1.3-2+u013) UNRELEASED; urgency=medium
+xorg-server (2:21.1.7-2deepin1) unstable; urgency=medium
 
-  * update
+  * add all pached needed by deepin. 
 
- -- Debian X Strike Force <debian-x@lists.debian.org>  Mon, 20 Jun 2022 22:37:10 -0400
+ -- Gui-Yue <yuemeng.gui@gmail.com>  Sun, 30 Apr 2023 02:43:52 +0000
+
+xorg-server (2:21.1.7-2) unstable; urgency=high
+
+  * composite: Fix use-after-free of the COW
+    ZDI-CAN-19866/CVE-2023-1393
+
+ -- Julien Cristau <jcristau@debian.org>  Wed, 29 Mar 2023 15:11:07 +0200
+
+xorg-server (2:21.1.7-1) unstable; urgency=medium
+
+  * New upstream release
+    + Xi: fix potential use-after-free in DeepCopyPointerClasses
+      (CVE-2023-0494, closes: #1030777)
+
+ -- Julien Cristau <jcristau@debian.org>  Tue, 07 Feb 2023 14:15:45 +0100
+
+xorg-server (2:21.1.6-1) unstable; urgency=medium
+
+  * New upstream release.
+  * patches: Drop upstreamed patches.
+  * Add signing-key from Olivier Fourdan.
+
+ -- Timo Aaltonen <tjaalton@debian.org>  Thu, 05 Jan 2023 16:02:46 +0200
+
+xorg-server (2:21.1.5-1) unstable; urgency=medium
+
+  * New upstream release.
+    - CVE-2022-46340, CVE-2022-46341, CVE-2022-46342, CVE-2022-46343,
+      CVE-2022-46344, CVE-2022-46283
+  * Add signing-key from Peter Hutterer.
+
+ -- Timo Aaltonen <tjaalton@debian.org>  Wed, 14 Dec 2022 11:10:24 +0200
+
+xorg-server (2:21.1.4-3) unstable; urgency=medium
+
+  * xkb: proof GetCountedString against request length attacks (CVE-2022-3550)
+  * xkb: fix some possible memleaks in XkbGetKbdByName (CVE-2022-3551)
+
+ -- Emilio Pozuelo Monfort <pochu@debian.org>  Fri, 11 Nov 2022 13:35:13 +0100
+
+xorg-server (2:21.1.4-2) unstable; urgency=medium
+
+  * 001_fedora_extramodes.patch: Dropped, apparently obsolete since
+    1.5.0. (LP: #1990456)
+
+ -- Timo Aaltonen <tjaalton@debian.org>  Thu, 22 Sep 2022 08:53:59 +0300
+
+xorg-server (2:21.1.4-1) unstable; urgency=medium
+
+  * New upstream release.
+    - CVE-2022-2319, CVE-2022-2320 (Closes: #1014903)
+
+ -- Timo Aaltonen <tjaalton@debian.org>  Mon, 25 Jul 2022 12:46:43 +0300
 
 xorg-server (2:21.1.3-2) unstable; urgency=medium
 

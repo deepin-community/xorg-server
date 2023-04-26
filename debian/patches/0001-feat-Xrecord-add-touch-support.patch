@@ -20,21 +20,21 @@ diff --git a/Xi/exevents.c b/Xi/exevents.c
 index 94b9983bd..af640ab7a 100644
 --- a/Xi/exevents.c
 +++ b/Xi/exevents.c
-@@ -1620,6 +1620,19 @@ ProcessTouchEvent(InternalEvent *ev, DeviceIntPtr dev)
+@@ -1622,6 +1622,19 @@
      else
          ti = TouchFindByClientID(dev, touchid);
  
 +    if (DeviceEventCallback) {
-+        DeviceEventInfoRec eventinfo;
-+        SpritePtr pSprite = dev->spriteInfo->sprite;
++	DeviceEventInfoRec eventinfo;
++	SpritePtr pSprite = dev->spriteInfo->sprite;
 +
-+        /* see comment in EnqueueEvents regarding the next three lines */
-+        if (ev->any.type == ET_Motion)
-+            ev->device_event.root = pSprite->hotPhys.pScreen->root->drawable.id;
++	/* see comment in EnqueueEvents regarding the next three lines */
++	if (ev->any.type == ET_Motion)
++	    ev->device_event.root = pSprite->hotPhys.pScreen->root->drawable.id;
 +
-+        eventinfo.device = dev;
-+        eventinfo.event = ev;
-+        CallCallbacks(&DeviceEventCallback, (void *) &eventinfo);
++	eventinfo.device = dev;
++	eventinfo.event = ev;
++	CallCallbacks(&DeviceEventCallback, (void *) &eventinfo);
 +    }
 +
      /* Active pointer grab */
@@ -44,10 +44,11 @@ diff --git a/dix/eventconvert.c b/dix/eventconvert.c
 index 53b8c79e3..b34b9c4b9 100644
 --- a/dix/eventconvert.c
 +++ b/dix/eventconvert.c
-@@ -32,6 +32,18 @@
+@@ -32,6 +32,19 @@
  #include <dix-config.h>
  #endif
  
++
 +#ifndef TOUCHDOWN
 +# define TOUCHDOWN (LASTEvent + 1)
 +#endif
@@ -63,7 +64,7 @@ index 53b8c79e3..b34b9c4b9 100644
  #include <stdint.h>
  #include <X11/X.h>
  #include <X11/extensions/XIproto.h>
-@@ -159,9 +171,6 @@ EventToCore(InternalEvent *event, xEvent **core_out, int *count_out)
+@@ -159,9 +172,6 @@
      case ET_RawTouchBegin:
      case ET_RawTouchUpdate:
      case ET_RawTouchEnd:
@@ -73,85 +74,84 @@ index 53b8c79e3..b34b9c4b9 100644
      case ET_TouchOwnership:
      case ET_BarrierHit:
      case ET_BarrierLeave:
-@@ -173,6 +182,78 @@ EventToCore(InternalEvent *event, xEvent **core_out, int *count_out)
+@@ -173,6 +183,78 @@
      case ET_GestureSwipeEnd:
          ret = BadMatch;
          break;
 +    case ET_TouchBegin:
 +    {
-+        DeviceEvent *e = &event->device_event;
++    	DeviceEvent *e = &event->device_event;
 +
-+        if (e->detail.key > 0xFF) {
-+            ret = BadMatch;
-+            goto out;
-+        }
++	if (e->detail.key > 0xFF) {
++	    ret = BadMatch;
++	    goto out;
++	}
 +
-+        core = calloc(1, sizeof(*core));
-+        if (!core)
-+            return BadAlloc;
-+        count = 1;
-+        core->u.u.type = TOUCHDOWN;
-+        core->u.u.detail = e->detail.key & 0xFF;
-+        core->u.keyButtonPointer.time = e->time;
-+        core->u.keyButtonPointer.rootX = e->root_x;
-+        core->u.keyButtonPointer.rootY = e->root_y;
-+        core->u.keyButtonPointer.state = e->corestate;
-+        core->u.keyButtonPointer.root = e->root;
-+        EventSetKeyRepeatFlag(core, (e->type == ET_KeyPress && e->key_repeat));
-+        ret = Success;
++	core = calloc(1, sizeof(*core));
++	if (!core)
++	    return BadAlloc;
++	count = 1;
++	core->u.u.type = TOUCHDOWN;
++	core->u.u.detail = e->detail.key & 0xFF;
++	core->u.keyButtonPointer.time = e->time;
++	core->u.keyButtonPointer.rootX = e->root_x;
++	core->u.keyButtonPointer.rootY = e->root_y;
++	core->u.keyButtonPointer.state = e->corestate;
++	core->u.keyButtonPointer.root = e->root;
++	EventSetKeyRepeatFlag(core, (e->type == ET_KeyPress && e->key_repeat));
++	ret = Success;
 +    }
 +        break;
 +    case ET_TouchUpdate:
 +    {
-+        DeviceEvent *e = &event->device_event;
++    	DeviceEvent *e = &event->device_event;
 +
-+        if (e->detail.key > 0xFF) {
-+            ret = BadMatch;
-+            goto out;
-+        }
++	if (e->detail.key > 0xFF) {
++	    ret = BadMatch;
++	    goto out;
++	}
 +
-+        core = calloc(1, sizeof(*core));
-+        if (!core)
-+            return BadAlloc;
-+        count = 1;
-+        core->u.u.type = TOUCHMOTION;
-+        core->u.u.detail = e->detail.key & 0xFF;
-+        core->u.keyButtonPointer.time = e->time;
-+        core->u.keyButtonPointer.rootX = e->root_x;
-+        core->u.keyButtonPointer.rootY = e->root_y;
-+        core->u.keyButtonPointer.state = e->corestate;
-+        core->u.keyButtonPointer.root = e->root;
-+        EventSetKeyRepeatFlag(core, (e->type == ET_KeyPress && e->key_repeat));
-+        ret = Success;
++	core = calloc(1, sizeof(*core));
++	if (!core)
++	    return BadAlloc;
++	count = 1;
++	core->u.u.type = TOUCHMOTION;
++	core->u.u.detail = e->detail.key & 0xFF;
++	core->u.keyButtonPointer.time = e->time;
++	core->u.keyButtonPointer.rootX = e->root_x;
++	core->u.keyButtonPointer.rootY = e->root_y;
++	core->u.keyButtonPointer.state = e->corestate;
++	core->u.keyButtonPointer.root = e->root;
++	EventSetKeyRepeatFlag(core, (e->type == ET_KeyPress && e->key_repeat));
++	ret = Success;
 +    }
-+        break;
++    	break;
 +    case ET_TouchEnd:
 +    {
-+        DeviceEvent *e = &event->device_event;
++    	DeviceEvent *e = &event->device_event;
 +
-+        if (e->detail.key > 0xFF) {
-+            ret = BadMatch;
-+            goto out;
-+        }
++	if (e->detail.key > 0xFF) {
++	    ret = BadMatch;
++	    goto out;
++	}
 +
-+        core = calloc(1, sizeof(*core));
-+        if (!core)
-+            return BadAlloc;
-+        count = 1;
-+        core->u.u.type = TOUCHUP;
-+        core->u.u.detail = e->detail.key & 0xFF;
-+        core->u.keyButtonPointer.time = e->time;
-+        core->u.keyButtonPointer.rootX = e->root_x;
-+        core->u.keyButtonPointer.rootY = e->root_y;
-+        core->u.keyButtonPointer.state = e->corestate;
-+        core->u.keyButtonPointer.root = e->root;
-+        EventSetKeyRepeatFlag(core, (e->type == ET_KeyPress && e->key_repeat));
-+        ret = Success;
++	core = calloc(1, sizeof(*core));
++	if (!core)
++	    return BadAlloc;
++	count = 1;
++	core->u.u.type = TOUCHUP;
++	core->u.u.detail = e->detail.key & 0xFF;
++	core->u.keyButtonPointer.time = e->time;
++	core->u.keyButtonPointer.rootX = e->root_x;
++	core->u.keyButtonPointer.rootY = e->root_y;
++	core->u.keyButtonPointer.state = e->corestate;
++	core->u.keyButtonPointer.root = e->root;
++	EventSetKeyRepeatFlag(core, (e->type == ET_KeyPress && e->key_repeat));
++	ret = Success;
 +    }
-+        break;
++    	break;
      default:
          /* XXX: */
          ErrorF("[dix] EventToCore: Not implemented yet \n");
 -- 
 2.20.1
-

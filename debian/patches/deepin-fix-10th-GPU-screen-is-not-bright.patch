@@ -6,16 +6,16 @@ diff --git a/hw/xfree86/common/xf86Bus.c b/hw/xfree86/common/xf86Bus.c
 index 6bbf489ab..f2d9c46ce 100644
 --- a/hw/xfree86/common/xf86Bus.c
 +++ b/hw/xfree86/common/xf86Bus.c
-@@ -536,17 +536,18 @@ xf86GetDevFromEntity(int entityIndex, int instance)
+@@ -554,17 +554,18 @@
  void
  xf86PostProbe(void)
  {
 -    if (fbSlotClaimed && (
-+    if ((fbSlotClaimed  ||
++    if ((fbSlotClaimed ||
 +#ifdef XSERVER_LIBPCIACCESS
-+                            pciSlotClaimed
++		           pciSlotClaimed
 +#else
-+                            TRUE
++			   TRUE
 +#endif
 +        ) && (
  #if (defined(__sparc__) || defined(__sparc)) && !defined(__OpenBSD__)
@@ -28,7 +28,7 @@ index 6bbf489ab..f2d9c46ce 100644
 -                             pciSlotClaimed
 -#else
 -                             TRUE
-+                             platformSlotClaimed
++			   platformSlotClaimed
  #endif
          ))
          FatalError("Cannot run in framebuffer mode. Please specify busIDs "

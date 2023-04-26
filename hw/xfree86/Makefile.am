@@ -48,12 +48,6 @@ DIST_SUBDIRS = common ddc i2c x86emu int10 fbdevhw os-support \
 bin_PROGRAMS = Xorg
 nodist_Xorg_SOURCES = sdksyms.c
 
-bin_PROGRAMS += gpu_mem_check
-gpu_mem_check_SOURCES = \
-			gpu_mem_check.c \
-			gpu_mem_rbo.c
-gpu_mem_check_LDADD = -ldrm
-
 AM_CFLAGS = $(DIX_CFLAGS) @XORG_CFLAGS@
 AM_CPPFLAGS = $(XORG_INCS) -I$(srcdir)/parser \
 	-I$(srcdir)/ddc -I$(srcdir)/i2c -I$(srcdir)/modes -I$(srcdir)/ramdac \

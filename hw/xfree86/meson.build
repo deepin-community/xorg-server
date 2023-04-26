@@ -75,7 +75,7 @@ endif
 
 if host_machine.system() == 'cygwin' or host_machine.system() == 'windows'
     linker_export_flags = '-Wl,--export-all-symbols'
-elif host_machine.system() == 'sunos'
+elif host_machine.system() == 'sunos' or host_machine.system() == 'darwin'
     linker_export_flags = []
 else
     linker_export_flags = '-Wl,--export-dynamic'
@@ -176,13 +176,6 @@ executable('gtf',
     include_directories: [inc, xorg_inc],
     dependencies: xorg_deps,
     c_args: xorg_c_args,
-    install: true,
-)
-
-executable('gpu_mem_check',
-    ['gpu_mem_check.c',
-    'gpu_mem_rbo.c'],
-    include_directories: [inc],
     install: true,
 )
 

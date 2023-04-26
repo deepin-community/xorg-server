@@ -73,7 +73,6 @@ Build-Depends:
   libdbus-1-dev (>= 1.0) [linux-any],
 # systemd-daemon
   libsystemd-dev [linux-any],
-  linux-libc-dev (>=4.19.90),
 Build-Depends-Indep: xz-utils
 Standards-Version: 3.9.8
 Rules-Requires-Root: binary-targets
