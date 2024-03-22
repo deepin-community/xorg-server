@@ -1,8 +1,39 @@
-xorg-server (2:21.1.7-2deepin1) unstable; urgency=medium
+xorg-server (2:21.1.10-1) unstable; urgency=medium
 
-  * add all pached needed by deepin. 
+  [ Emilio Pozuelo Monfort ]
+  * Fix build on hurd-amd64. Thanks Samuel Thibault. (Closes: #1055412)
 
- -- Gui-Yue <yuemeng.gui@gmail.com>  Sun, 30 Apr 2023 02:43:52 +0000
+  [ Timo Aaltonen ]
+  * New upstream release.
+    - CVE-2023-6377
+    - CVE-2023-6478
+
+ -- Timo Aaltonen <tjaalton@debian.org>  Wed, 13 Dec 2023 09:51:20 +0200
+
+xorg-server (2:21.1.9-1) unstable; urgency=medium
+
+  * New upstream release.
+    - CVE-2023-5367
+    - CVE-2023-5380
+    - CVE-2023-5574
+
+ -- Timo Aaltonen <tjaalton@debian.org>  Wed, 25 Oct 2023 10:43:00 +0300
+
+xorg-server (2:21.1.8-1) unstable; urgency=medium
+
+  * patches: Drop an obsolete patch. (Closes: #1034413)
+  * New upstream release.
+
+ -- Timo Aaltonen <tjaalton@debian.org>  Tue, 01 Aug 2023 12:26:02 +0300
+
+xorg-server (2:21.1.7-3) unstable; urgency=medium
+
+  * Enable DRI2 for the udeb build, needed in addition to DRM support
+    since 9c81b8f5b5 to build the modesetting driver. This fixes failures
+    to start X in the graphical installer under UTM (Closes: #1035014).
+    Thanks to Keith Toh for the report and the follow-up tests!
+
+ -- Cyril Brulebois <kibi@debian.org>  Wed, 03 May 2023 03:41:41 +0200
 
 xorg-server (2:21.1.7-2) unstable; urgency=high
 
