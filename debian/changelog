@@ -1,3 +1,9 @@
+xorg-server (2:21.1.10-1deepin1) unstable; urgency=medium
+
+  * add zx 709 mwv206 device id.
+
+ -- LiChengGang <lichenggang@uniontech.com>  Fri, 22 Mar 2024 18:31:26 +0800
+
 xorg-server (2:21.1.10-1) unstable; urgency=medium
 
   [ Emilio Pozuelo Monfort ]
