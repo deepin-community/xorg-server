@@ -1,3 +1,9 @@
+xorg-server (2:21.1.10-1deepin2) unstable; urgency=medium
+
+  * Xrecord add touch support.
+
+ -- zhangyu <zhangyud@uniontech.com>  Mon, 23 Sep 2024 17:24:26 +0800
+
 xorg-server (2:21.1.10-1deepin1) unstable; urgency=medium
 
   * add zx 709 mwv206 device id.
