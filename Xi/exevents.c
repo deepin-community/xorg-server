@@ -1622,6 +1622,19 @@ ProcessTouchEvent(InternalEvent *ev, DeviceIntPtr dev)
     else
         ti = TouchFindByClientID(dev, touchid);
 
+    if (DeviceEventCallback) {
+        DeviceEventInfoRec eventinfo;
+         SpritePtr pSprite = dev->spriteInfo->sprite;
+
+        /* see comment in EnqueueEvents regarding the next three lines */
+        if (ev->any.type == ET_Motion)
+            ev->device_event.root = pSprite->hotPhys.pScreen->root->drawable.id;
+
+        eventinfo.device = dev;
+        eventinfo.event = ev;
+        CallCallbacks(&DeviceEventCallback, (void *) &eventinfo);
+    }
+
     /* Active pointer grab */
     if (emulate_pointer && dev->deviceGrab.grab && !dev->deviceGrab.fromPassiveGrab &&
         (dev->deviceGrab.grab->grabtype == CORE ||
