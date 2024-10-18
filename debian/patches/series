@@ -7,3 +7,4 @@
 07_use-modesetting-driver-by-default-on-GeForce.diff
 add-device-id.patch
 feat-Xrecord-add-touch-support.patch
+Resolve_xorg_crashing_whith_displaylink_unplugging.patch

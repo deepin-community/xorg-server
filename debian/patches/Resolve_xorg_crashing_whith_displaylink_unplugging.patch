@@ -1,0 +1,14 @@
+diff --git a/hw/xfree86/common/xf86DGA.c b/hw/xfree86/common/xf86DGA.c
+index fa70ba2..b38b30f 100644
+--- a/hw/xfree86/common/xf86DGA.c
++++ b/hw/xfree86/common/xf86DGA.c
+@@ -268,7 +268,8 @@ DGACloseScreen(ScreenPtr pScreen)
+     DGAScreenPtr pScreenPriv = DGA_GET_SCREEN_PRIV(pScreen);
+ 
+     mieqSetHandler(ET_DGAEvent, NULL);
+-    pScreenPriv->pScrn->SetDGAMode(pScreenPriv->pScrn, 0, NULL);
++    if (pScreenPriv->pScrn->SetDGAMode)
++        pScreenPriv->pScrn->SetDGAMode(pScreenPriv->pScrn, 0, NULL);
+     FreeMarkedVisuals(pScreen);
+ 
+     pScreen->CloseScreen = pScreenPriv->CloseScreen;
