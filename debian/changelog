@@ -1,3 +1,9 @@
+xorg-server (2:21.1.10-1deepin3) UNRELEASED; urgency=medium
+
+  * Resolve the issue of Xorg crashing remove displaylink devices.
+
+ -- huxiaodong <huxiaodong@uniontech.com>  Fri, 18 Oct 2024 08:57:24 +0800
+
 xorg-server (2:21.1.10-1deepin2) unstable; urgency=medium
 
   * Xrecord add touch support.
