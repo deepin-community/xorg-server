@@ -6,7 +6,7 @@ Build-Depends:
  debhelper-compat (= 12),
  po-debconf,
  quilt,
- pkg-config,
+ pkgconf,
  bison,
  flex,
  xutils-dev (>= 1:7.6+4),
@@ -26,7 +26,7 @@ Build-Depends:
  libselinux1-dev (>= 2.0.80) [linux-any],
  libaudit-dev [linux-any],
  libdrm-dev (>= 2.4.107-5~) [!hurd-any],
- libgl1-mesa-dev (>= 9.2),
+ libglvnd-dev,
  mesa-common-dev,
  libunwind-dev [amd64 arm64 armel armhf hppa i386 ia64 mips64 mips64el mipsel powerpc powerpcspe ppc64 ppc64el sh4],
  libxmuu-dev (>= 1:0.99.1),
@@ -55,7 +55,7 @@ Build-Depends:
  libxcb-shape0-dev,
  libxcb-render0-dev,
  libxcb-render-util0-dev,
- libxcb-util0-dev,
+ libxcb-util-dev,
  libxcb-image0-dev,
  libxcb-icccm4-dev,
  libxcb-shm0-dev,
@@ -73,6 +73,7 @@ Build-Depends:
   libdbus-1-dev (>= 1.0) [linux-any],
 # systemd-daemon
   libsystemd-dev [linux-any],
+  systemd-dev [linux-any],
 Build-Depends-Indep: xz-utils
 Standards-Version: 3.9.8
 Rules-Requires-Root: binary-targets

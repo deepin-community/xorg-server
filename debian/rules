@@ -4,6 +4,10 @@ include debian/rules.flags
 
 include /usr/share/dpkg/architecture.mk
 
+ifeq ($(DEB_HOST_ARCH_OS), linux)
+deb_udevdir = $(shell pkg-config --variable=udevdir udev)
+endif
+
 %:
 	dh $@ --with quilt
 
@@ -129,10 +133,10 @@ override_dh_install:
 	install -m 755 -d debian/xserver-xorg-core/usr/share/bug/xserver-xorg-core
 	install -m 755 debian/xserver-xorg-core.bug.script debian/xserver-xorg-core/usr/share/bug/xserver-xorg-core/script
 ifeq ($(DEB_HOST_ARCH_OS), linux)
-	install -d debian/xserver-xorg-core/lib/udev/rules.d
-	install -m 644 debian/local/64-xorg-xkb.rules debian/xserver-xorg-core/lib/udev/rules.d
-	install -d debian/xserver-xorg-core-udeb/lib/udev/rules.d
-	install -m 644 debian/local/64-xorg-xkb.rules debian/xserver-xorg-core-udeb/lib/udev/rules.d
+	install -d debian/xserver-xorg-core$(deb_udevdir)/rules.d
+	install -m 644 debian/local/64-xorg-xkb.rules debian/xserver-xorg-core$(deb_udevdir)/rules.d
+	install -d debian/xserver-xorg-core-udeb$(deb_udevdir)/rules.d
+	install -m 644 debian/local/64-xorg-xkb.rules debian/xserver-xorg-core-udeb$(deb_udevdir)/rules.d
 endif
 
 override_dh_missing-indep:
