@@ -1,20 +1,86 @@
-xorg-server (2:21.1.10-1deepin3) unstable; urgency=medium
+xorg-server (2:21.1.14-1) unstable; urgency=high
 
-  * Resolve the issue of Xorg crashing remove displaylink devices.
+  * New upstream release
+    + CVE-2024-9632: Heap-based buffer overflow privilege escalation in
+      _XkbSetCompatMap (closes: #1086244)
 
- -- huxiaodong <huxiaodong@uniontech.com>  Fri, 18 Oct 2024 08:57:24 +0800
+ -- Julien Cristau <jcristau@debian.org>  Tue, 29 Oct 2024 17:25:14 +0100
 
-xorg-server (2:21.1.10-1deepin2) unstable; urgency=medium
+xorg-server (2:21.1.13-3) unstable; urgency=medium
 
-  * Xrecord add touch support.
+  [ Tobias Heider ]
+  * Backport config quirk for apple silicon (closes: #1080099)
 
- -- zhangyu <zhangyud@uniontech.com>  Mon, 23 Sep 2024 17:24:26 +0800
+  [ Emilio Pozuelo Monfort ]
+  * Build-dep on libxcb-util-dev instead of libxcb-util0-dev.
 
-xorg-server (2:21.1.10-1deepin1) unstable; urgency=medium
+ -- Emilio Pozuelo Monfort <pochu@debian.org>  Wed, 23 Oct 2024 12:48:58 +0200
 
-  * add zx 709 mwv206 device id.
+xorg-server (2:21.1.13-2) unstable; urgency=medium
 
- -- LiChengGang <lichenggang@uniontech.com>  Fri, 22 Mar 2024 18:31:26 +0800
+  * patches: Fix i386 build with gcc-14.
+
+ -- Timo Aaltonen <tjaalton@debian.org>  Thu, 29 Aug 2024 15:54:05 +0300
+
+xorg-server (2:21.1.13-1) unstable; urgency=medium
+
+  * New upstream release.
+  * Update signing-key.asc.
+  * Add upstream metadata, drop old git url from d/watch.
+  * control: Migrate to pkgconf.
+  * control: Substitute libgl1-mesa-dev build-dep to libglvnd-dev.
+
+ -- Timo Aaltonen <tjaalton@debian.org>  Thu, 29 Aug 2024 15:18:01 +0300
+
+xorg-server (2:21.1.12-1) unstable; urgency=medium
+
+  * New upstream release.
+  * render: Avoid possible double-free in ProcRenderAddGlyphs()
+    (closes: #1068470)
+
+ -- Julien Cristau <jcristau@debian.org>  Wed, 10 Apr 2024 10:44:55 +0200
+
+xorg-server (2:21.1.11-3) unstable; urgency=high
+
+  [ Chris Hofstaedtler ]
+  * Use udev.pc to place udev files (Closes: #1057945)
+
+  [ Julien Cristau ]
+  * Pull from upstream server-21.1-branch:
+    - hw/xfree86: fix NULL pointer refrence to mode name
+    - Initialize Mode->name in xf86CVTMode()
+    - Allow disabling byte-swapped clients
+    - Xext: SProcSyncCreateFence needs to swap drawable id too
+    - Xi: ProcXIGetSelectedEvents needs to use unswapped length to send
+      reply (CVE-2024-31080)
+    - Xi: ProcXIPassiveGrabDevice needs to use unswapped length to send
+      reply (CVE-2024-31081)
+    - Xquartz: ProcAppleDRICreatePixmap needs to use unswapped length to
+      send reply (CVE-2024-31082)
+    - render: fix refcounting of glyphs during ProcRenderAddGlyphs
+      (CVE-2024-31083)
+  * dix-Fix-use-after-free-in-input-device-shutdown.patch: drop (now upstream).
+
+ -- Julien Cristau <jcristau@debian.org>  Wed, 03 Apr 2024 21:09:12 +0200
+
+xorg-server (2:21.1.11-2) unstable; urgency=medium
+
+  [ Salvatore Bonaccorso ]
+  * dix: Fix use after free in input device shutdown (Closes: #1061110)
+
+ -- Julien Cristau <jcristau@debian.org>  Mon, 22 Jan 2024 13:17:07 +0100
+
+xorg-server (2:21.1.11-1) unstable; urgency=medium
+
+  * New upstream release, fixes:
+    - CVE-2023-6816
+    - CVE-2024-0229
+    - CVE-2024-21885
+    - CVE-2024-21886
+    - CVE-2024-0408
+    - CVE-2024-0409
+
+ -- Julien Cristau <jcristau@debian.org>  Tue, 16 Jan 2024 15:33:53 +0100
 
 xorg-server (2:21.1.10-1) unstable; urgency=medium
 
