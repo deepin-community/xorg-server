@@ -1,3 +1,9 @@
+xorg-server (2:21.1.10-1deepin5) unstable; urgency=medium
+
+  * fix mips64el no bootvga. 
+
+ -- lichenggang <lichenggang@deepin.org>  Thu, 20 Feb 2025 11:13:04 +0800
+
 xorg-server (2:21.1.10-1deepin4) unstable; urgency=medium
   * form 21.0.14	
   * New upstream release
