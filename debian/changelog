@@ -1,3 +1,9 @@
+xorg-server (2:21.1.10-1deepin7) unstable; urgency=medium
+
+  * feat: add zx KX600G device id
+
+ -- huxiaodong <huxiaodong@uniontech.com>  Tue, 08 Apr 2025 18:02:29 +0800
+
 xorg-server (2:21.1.10-1deepin6) unstable; urgency=medium
 
   * Replace mips64el patch with a more detailed and prudent one.
