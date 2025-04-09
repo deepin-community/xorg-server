@@ -12,3 +12,4 @@ feat-Xrecord-add-touch-support.patch
 Resolve_xorg_crashing_whith_displaylink_unplugging.patch
 0001-hw-xfree86-workaround-bad-firmware-boot-VGA-reportin.patch
 add-zx-device-id.patch
+add-Glenfly-arise-pci-ids.patch
