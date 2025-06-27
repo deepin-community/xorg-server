@@ -13,3 +13,10 @@ Resolve_xorg_crashing_whith_displaylink_unplugging.patch
 0001-hw-xfree86-workaround-bad-firmware-boot-VGA-reportin.patch
 add-zx-device-id.patch
 add-Glenfly-arise-pci-ids.patch
+#backport: gles support
+glamor-gles/1000-glamor-GLES-fixes-part-1.patch
+glamor-gles/1001-glamor-add-gl_PointSize-for-ES-shaders.patch
+glamor-gles/1002-glamor-handle-EXT_gpu_shader4-in-dual-source-blend-paths.patch
+glamor-gles/1003-glamor-supports-GLES3-shaders.patch
+glamor-gles/1004-glamor-Dont-require-EXT_gpu_shader4-unconditionally.patch
+glamor-gles/1005-glamor-Fix-dual-blend-on-GLES3.patch
