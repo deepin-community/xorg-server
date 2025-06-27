@@ -1,3 +1,20 @@
+xorg-server (2:21.1.10-1deepin9) unstable; urgency=medium
+
+  * glamor: GLES fixes, part 1
+    (https://gitlab.freedesktop.org/xorg/xserver/-/merge_requests/1007)
+  * glamor: add gl_PointSize for ES shaders
+    (https://gitlab.freedesktop.org/xorg/xserver/-/merge_requests/1156)
+  * glamor: handle EXT_gpu_shader4 in dual source blend paths
+    (https://gitlab.freedesktop.org/xorg/xserver/-/merge_requests/1066)
+  * glamor: supports GLES3 shaders
+    (https://gitlab.freedesktop.org/xorg/xserver/-/merge_requests/948)
+  * glamor: Don't require EXT_gpu_shader4 unconditionally (fix previous MR)
+    (https://gitlab.freedesktop.org/xorg/xserver/-/merge_requests/1179)
+  * glamor: Fix dual blend on GLES3 (fix for PowerVR driver)
+    (https://gitlab.freedesktop.org/xorg/xserver/-/merge_requests/1750)
+
+ -- Chang Yang <yangchang@deepin.org>  Fri, 27 Jun 2025 17:08:29 +0800
+
 xorg-server (2:21.1.10-1deepin8) unstable; urgency=medium
 
   * feat: add glenfly arise device id
