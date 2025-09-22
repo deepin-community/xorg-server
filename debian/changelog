@@ -1,3 +1,9 @@
+xorg-server (2:21.1.10-1deepin10) unstable; urgency=medium
+
+  * config: Preserve section data when parsing duplicate files
+
+ -- Liu Heng <liuhenga@uniontech.com>  Thu, 25 Sep 2025 09:44:22 +0000
+
 xorg-server (2:21.1.10-1deepin9) unstable; urgency=medium
 
   * glamor: GLES fixes, part 1

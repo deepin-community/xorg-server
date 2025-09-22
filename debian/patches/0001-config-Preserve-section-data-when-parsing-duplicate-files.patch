@@ -1,0 +1,175 @@
+From 8cb84ebe9c60df2de1afd9f7e6feab6242f31ee2 Mon Sep 17 00:00:00 2001
+From: liuheng <liuhenga@uniontech.com>
+Date: Thu, 10 Jul 2025 11:39:40 +0800
+Subject: [PATCH] config: Preserve section data when parsing duplicate files
+
+Previously, when parsing multiple configuration files containing the same
+section names, only the last occurrence of each section would be retained.
+Earlier definitions were silently discarded due to unconditional memory
+allocation and overwriting of pointers during parsing.
+
+This resulted in incomplete or incorrect configuration state when users
+intended to merge or extend configuration through multiple files.
+
+The section parsing functions in Files.c, Flags.c, and Module.c now
+accept existing section pointers. These functions allocate new memory only
+if the input pointer is NULL, preserving earlier data when re-parsing.
+
+read.c has been updated to detect and pass existing section pointers when
+encountering duplicate sections across files, preventing loss of prior content.
+
+With these changes, the parser properly accumulates and merges configuration
+data across multiple files, ensuring that all relevant settings are preserved.
+
+Fixes: https://gitlab.freedesktop.org/xorg/xserver/-/issues/467
+---
+ hw/xfree86/parser/Files.c       | 12 +++++++++---
+ hw/xfree86/parser/Flags.c       | 12 +++++++++---
+ hw/xfree86/parser/Module.c      | 12 +++++++++---
+ hw/xfree86/parser/configProcs.h |  6 +++---
+ hw/xfree86/parser/read.c        |  6 +++---
+ 5 files changed, 33 insertions(+), 15 deletions(-)
+
+diff --git a/hw/xfree86/parser/Files.c b/hw/xfree86/parser/Files.c
+index fba99a864..433ec6cbb 100644
+--- a/hw/xfree86/parser/Files.c
++++ b/hw/xfree86/parser/Files.c
+@@ -76,16 +76,22 @@ static const xf86ConfigSymTabRec FilesTab[] = {
+ #define CLEANUP xf86freeFiles
+ 
+ XF86ConfFilesPtr
+-xf86parseFilesSection(void)
++xf86parseFilesSection(XF86ConfFilesPtr ptr)
+ {
+     int i, j;
+     int k, l;
+     char *str;
+     int token;
+ 
+-    parsePrologue(XF86ConfFilesPtr, XF86ConfFilesRec)
++    if (ptr == NULL)
++    {
++        if((ptr=calloc(1, sizeof(XF86ConfFilesRec))) == NULL)
++        {
++            return NULL;
++        }
++    }
+ 
+-        while ((token = xf86getToken(FilesTab)) != ENDSECTION) {
++    while ((token = xf86getToken(FilesTab)) != ENDSECTION) {
+         switch (token) {
+         case COMMENT:
+             ptr->file_comment = xf86addComment(ptr->file_comment, xf86_lex_val.str);
+diff --git a/hw/xfree86/parser/Flags.c b/hw/xfree86/parser/Flags.c
+index 7d35bb7ea..aec11ce14 100644
+--- a/hw/xfree86/parser/Flags.c
++++ b/hw/xfree86/parser/Flags.c
+@@ -84,13 +84,19 @@ static const xf86ConfigSymTabRec ServerFlagsTab[] = {
+ #define CLEANUP xf86freeFlags
+ 
+ XF86ConfFlagsPtr
+-xf86parseFlagsSection(void)
++xf86parseFlagsSection(XF86ConfFlagsPtr ptr)
+ {
+     int token;
+ 
+-    parsePrologue(XF86ConfFlagsPtr, XF86ConfFlagsRec)
++    if (ptr == NULL)
++    {
++        if((ptr=calloc(1, sizeof(XF86ConfFlagsRec))) == NULL)
++        {
++            return NULL;
++        }
++    }
+ 
+-        while ((token = xf86getToken(ServerFlagsTab)) != ENDSECTION) {
++    while ((token = xf86getToken(ServerFlagsTab)) != ENDSECTION) {
+         int hasvalue = FALSE;
+         int strvalue = FALSE;
+         int tokentype;
+diff --git a/hw/xfree86/parser/Module.c b/hw/xfree86/parser/Module.c
+index 9a166aff2..95a692af9 100644
+--- a/hw/xfree86/parser/Module.c
++++ b/hw/xfree86/parser/Module.c
+@@ -118,13 +118,19 @@ xf86parseModuleSubSection(XF86LoadPtr head, char *name)
+ }
+ 
+ XF86ConfModulePtr
+-xf86parseModuleSection(void)
++xf86parseModuleSection(XF86ConfModulePtr ptr)
+ {
+     int token;
+ 
+-    parsePrologue(XF86ConfModulePtr, XF86ConfModuleRec)
++    if (ptr == NULL)
++    {
++        if((ptr=calloc(1, sizeof(XF86ConfModuleRec))) == NULL)
++        {
++            return NULL;
++        }
++    }
+ 
+-        while ((token = xf86getToken(ModuleTab)) != ENDSECTION) {
++    while ((token = xf86getToken(ModuleTab)) != ENDSECTION) {
+         switch (token) {
+         case COMMENT:
+             ptr->mod_comment = xf86addComment(ptr->mod_comment, xf86_lex_val.str);
+diff --git a/hw/xfree86/parser/configProcs.h b/hw/xfree86/parser/configProcs.h
+index 39399b7bc..2c0abefde 100644
+--- a/hw/xfree86/parser/configProcs.h
++++ b/hw/xfree86/parser/configProcs.h
+@@ -38,12 +38,12 @@ void xf86freeDeviceList(XF86ConfDevicePtr ptr);
+ int xf86validateDevice(XF86ConfigPtr p);
+ 
+ /* Files.c */
+-XF86ConfFilesPtr xf86parseFilesSection(void);
++XF86ConfFilesPtr xf86parseFilesSection(XF86ConfFilesPtr ptr);
+ void xf86printFileSection(FILE * cf, XF86ConfFilesPtr ptr);
+ void xf86freeFiles(XF86ConfFilesPtr p);
+ 
+ /* Flags.c */
+-XF86ConfFlagsPtr xf86parseFlagsSection(void);
++XF86ConfFlagsPtr xf86parseFlagsSection(XF86ConfFlagsPtr ptr);
+ void xf86printServerFlagsSection(FILE * f, XF86ConfFlagsPtr flags);
+ void xf86freeFlags(XF86ConfFlagsPtr flags);
+ 
+@@ -68,7 +68,7 @@ void xf86freeLayoutList(XF86ConfLayoutPtr ptr);
+ int xf86validateLayout(XF86ConfigPtr p);
+ 
+ /* Module.c */
+-XF86ConfModulePtr xf86parseModuleSection(void);
++XF86ConfModulePtr xf86parseModuleSection(XF86ConfModulePtr ptr);
+ void xf86printModuleSection(FILE * cf, XF86ConfModulePtr ptr);
+ extern _X_EXPORT XF86LoadPtr xf86addNewLoadDirective(XF86LoadPtr head,
+                                                      const char *name, int type,
+diff --git a/hw/xfree86/parser/read.c b/hw/xfree86/parser/read.c
+index a4600bc06..e3cbc2115 100644
+--- a/hw/xfree86/parser/read.c
++++ b/hw/xfree86/parser/read.c
+@@ -113,12 +113,12 @@ xf86readConfigFile(void)
+             if (xf86nameCompare(xf86_lex_val.str, "files") == 0) {
+                 free(xf86_lex_val.str);
+                 xf86_lex_val.str = NULL;
+-                HANDLE_RETURN(conf_files, xf86parseFilesSection());
++                HANDLE_RETURN(conf_files, xf86parseFilesSection(ptr->conf_files));
+             }
+             else if (xf86nameCompare(xf86_lex_val.str, "serverflags") == 0) {
+                 free(xf86_lex_val.str);
+                 xf86_lex_val.str = NULL;
+-                HANDLE_RETURN(conf_flags, xf86parseFlagsSection());
++                HANDLE_RETURN(conf_flags, xf86parseFlagsSection(ptr->conf_flags));
+             }
+             else if (xf86nameCompare(xf86_lex_val.str, "pointer") == 0) {
+                 free(xf86_lex_val.str);
+@@ -177,7 +177,7 @@ xf86readConfigFile(void)
+             else if (xf86nameCompare(xf86_lex_val.str, "module") == 0) {
+                 free(xf86_lex_val.str);
+                 xf86_lex_val.str = NULL;
+-                HANDLE_RETURN(conf_modules, xf86parseModuleSection());
++                HANDLE_RETURN(conf_modules, xf86parseModuleSection(ptr->conf_modules));
+             }
+             else if (xf86nameCompare(xf86_lex_val.str, "serverlayout") == 0) {
+                 free(xf86_lex_val.str);
+-- 
+2.51.0
+
