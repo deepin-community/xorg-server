@@ -1,0 +1,521 @@
+From 48b78866cabab2446e3e32ba606d85df2f19c9af Mon Sep 17 00:00:00 2001
+From: Liu Heng <liuhenga@uniontech.com>
+Date: Sat, 11 Oct 2025 13:42:58 +0800
+Subject: [PATCH] feat: implement screenshot protection for secure windows
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+1. Add protected window management with SetProtectedWindow/
+RemoveProtectedWindow APIs
+2. Implement screenshot detection and censorship in ShmGetImage and
+CopyArea operations
+3. Add window manager detection to exempt legitimate window managers
+from censorship
+4. Create visual censorship overlay with lock icon and background
+patterns
+5. Integrate protection into both shared memory and direct copy
+operations
+
+Log: Added screenshot protection for secure windows with visual
+censorship
+
+Influence:
+1. Test setting and removing protected windows using new APIs
+2. Verify screenshot tools cannot capture protected window content
+3. Test that window managers can still capture screens normally
+4. Verify censorship overlay appears correctly on protected regions
+5. Test performance impact during screen capture operations
+6. Validate protection works with both shared memory and direct copy
+methods
+
+feat: 为安全窗口实现截图保护功能
+
+1. 添加受保护窗口管理，包含 SetProtectedWindow/RemoveProtectedWindow API
+2. 在 ShmGetImage 和 CopyArea 操作中实现截图检测和内容审查
+3. 添加窗口管理器检测，使合法的窗口管理器免于审查
+4. 创建带锁图标和背景图案的视觉审查覆盖层
+5. 将保护功能集成到共享内存和直接复制操作中
+
+Log: 新增安全窗口截图保护功能，包含视觉审查机制
+
+Influence:
+1. 测试使用新 API 设置和移除受保护窗口
+2. 验证截图工具无法捕获受保护窗口内容
+3. 测试窗口管理器仍能正常截取屏幕
+4. 验证审查覆盖层在受保护区域正确显示
+5. 测试屏幕捕获操作期间的性能影响
+6. 验证保护功能在共享内存和直接复制方法中均有效
+---
+ Xext/shm.c       |  16 +++
+ dix/dispatch.c   | 341 ++++++++++++++++++++++++++++++++++++++++++++++-
+ dix/dispatch.h   |   5 +
+ include/window.h |   4 +
+ 4 files changed, 364 insertions(+), 2 deletions(-)
+
+diff --git a/Xext/shm.c b/Xext/shm.c
+index 071bd1a..747e7d1 100644
+--- a/Xext/shm.c
++++ b/Xext/shm.c
+@@ -60,6 +60,7 @@ in this Software without prior written authorization from The Open Group.
+ #include <sys/mman.h>
+ #include "protocol-versions.h"
+ #include "busfault.h"
++#include "../dix/dispatch.h"
+ 
+ /* Needed for Solaris cross-zone shared memory extension */
+ #ifdef HAVE_SHMCTL64
+@@ -634,6 +635,9 @@ ProcShmGetImage(ClientPtr client)
+     rc = dixLookupDrawable(&pDraw, stuff->drawable, client, 0, DixReadAccess);
+     if (rc != Success)
+         return rc;
++
++    Bool isWindowManager = IsClientWindowManager(client, pDraw->pScreen);
++
+     VERIFY_SHMPTR(stuff->shmseg, stuff->offset, TRUE, shmdesc, client);
+     if (pDraw->type == DRAWABLE_WINDOW) {
+         if (   /* check for being viewable */
+@@ -726,6 +730,18 @@ ProcShmGetImage(ClientPtr client)
+         swapl(&xgi.visual);
+         swapl(&xgi.size);
+     }
++
++    if (!isWindowManager) {
++        int depth = stuff->format == ZPixmap ? pDraw->depth : 1;
++        int bitsPerPixel = stuff->format == ZPixmap ? pDraw->bitsPerPixel : 1;
++        PixmapPtr pPix = GetScratchPixmapHeader(pDraw->pScreen, stuff->width,
++            stuff->height, depth, bitsPerPixel,
++            PixmapBytePad(stuff->width, pDraw->depth),
++            shmdesc->addr + stuff->offset);
++        UaceCensorImage(client, pDraw, &pPix->drawable,
++                        stuff->x, stuff->y, stuff->width, stuff->height);
++        FreeScratchPixmapHeader(pPix);
++    }
+     WriteToClient(client, sizeof(xShmGetImageReply), &xgi);
+ 
+     return Success;
+diff --git a/dix/dispatch.c b/dix/dispatch.c
+index 8f7452d..93dd6f1 100644
+--- a/dix/dispatch.c
++++ b/dix/dispatch.c
+@@ -143,6 +143,9 @@ int ProcInitialConnection();
+ #define BITCLEAR(buf, i) MASKWORD(buf, i) &= ~BITMASK(i)
+ #define GETBIT(buf, i) (MASKWORD(buf, i) & BITMASK(i))
+ 
++int protectedWindowCount = 0;
++Window *protectedWindowList = NULL;
++
+ xConnSetupPrefix connSetupPrefix;
+ 
+ PaddingInfo PixmapWidthPaddingInfo[33];
+@@ -150,6 +153,9 @@ PaddingInfo PixmapWidthPaddingInfo[33];
+ static ClientPtr grabClient;
+ static ClientPtr currentClient; /* Client for the request currently being dispatched */
+ 
++static const unsigned int bgPixel = 0x00D4D4D4;
++static const unsigned int lockPixel = 0x00FD0000;
++
+ #define GrabNone 0
+ #define GrabActive 1
+ static int grabState = GrabNone;
+@@ -1789,6 +1795,12 @@ ProcCopyArea(ClientPtr client)
+     pRgn = (*pGC->ops->CopyArea) (pSrc, pDst, pGC, stuff->srcX, stuff->srcY,
+                                   stuff->width, stuff->height,
+                                   stuff->dstX, stuff->dstY);
++
++    // When the source and destination are different, it is usually a screenshot tools
++    if (clients[CLIENT_ID(pSrc->id)] != clients[CLIENT_ID(pDst->id)]) {
++        UaceCensorImage(client, pSrc, pDst, stuff->srcX, stuff->srcY, stuff->width, stuff->height);
++    }
++
+     if (pGC->graphicsExposures) {
+         SendGraphicsExpose(client, pRgn, stuff->dstDrawable, X_CopyArea, 0);
+         if (pRgn)
+@@ -2134,6 +2146,323 @@ ProcPutImage(ClientPtr client)
+     return Success;
+ }
+ 
++void SetProtectedWindow(Window window)
++{
++    if (protectedWindowCount >= MAXCLIENTS)
++        return;
++
++    for (int i = 0; i < protectedWindowCount; i++) {
++        if (window == protectedWindowList[i]) {
++            return;
++        }
++    }
++
++    int n = protectedWindowCount;
++    if (protectedWindowList == NULL) {
++        assert(n == 0);
++        protectedWindowList = malloc(MAXCLIENTS * sizeof(Window));
++    }
++    protectedWindowList[n] = window;
++    protectedWindowCount++;
++}
++
++void RemoveProtectedWindow(Window window)
++{
++    for (int i = 0; i < protectedWindowCount; i++) {
++        if (protectedWindowList[i] == window) {
++            for (int j = i; j < protectedWindowCount; j++) {
++                protectedWindowList[j] = protectedWindowList[j + 1];
++            }
++            protectedWindowList[protectedWindowCount - 1] = 0;
++            protectedWindowCount--;
++            return;
++        }
++    }
++}
++
++int CreateCensorImage(ClientPtr client,
++                        GCPtr pGC,
++                        DrawablePtr pDraw,
++                        xRectangle pRects,
++                        unsigned int bgPixel,
++                        unsigned int lockPixel)
++{
++    Bool failed = 0;
++    ChangeGCVal gcvalue[3];
++
++    int lineWidth = 8;
++    int lockLineLength = lineWidth * 2;
++
++    int upRectWidth = 52;
++    int upRectHeight = 46;
++
++    int downRectWidth = 84;
++    int downRectHeight = 64;
++
++    xPoint midPoint;
++    midPoint.x = pRects.x + pRects.width / 2;
++    midPoint.y = pRects.y + pRects.height / 2.5;
++
++    DDXPointPtr pointsBg = NULL;
++    pointsBg = malloc(2 * sizeof(xPoint));
++    if (!pointsBg) {
++        failed = 1;
++        goto failsafe;
++    }
++
++    pointsBg[0].x = pRects.x;
++    pointsBg[0].y = pRects.y + pRects.height / 2;
++
++    pointsBg[1].x = pRects.x + pRects.width;
++    pointsBg[1].y = pRects.y + pRects.height / 2;
++
++    gcvalue[0].val = bgPixel;
++    gcvalue[1].val = pRects.height;
++
++    ChangeGC(client, pGC, GCForeground | GCLineWidth, gcvalue);
++    ValidateGC(pDraw, pGC);
++    (*pGC->ops->Polylines) (pDraw, pGC, 0, 2, pointsBg);
++
++    xArc *lockArc = NULL;
++    lockArc = malloc(6 * sizeof(xArc));
++    if (lockArc == NULL) {
++        failed = 1;
++        goto failsafe;
++    }
++
++    lockArc[0].x = midPoint.x - upRectWidth / 2;
++    lockArc[0].y = midPoint.y - upRectHeight / 2 - lockLineLength;
++    lockArc[0].width = upRectWidth;
++    lockArc[0].height = upRectHeight;
++    lockArc[0].angle1 = 180 * 64;
++    lockArc[0].angle2 = -180 * 64;
++
++    lockArc[1].x = midPoint.x - downRectWidth / 2 - lineWidth;
++    lockArc[1].y = midPoint.y;
++    lockArc[1].width = lineWidth * 2;
++    lockArc[1].height = lineWidth * 2;
++    lockArc[1].angle1 = 90 * 64;
++    lockArc[1].angle2 = 90 * 64;
++
++    lockArc[2].x = midPoint.x + downRectWidth / 2 - lineWidth;
++    lockArc[2].y = midPoint.y;
++    lockArc[2].width = lineWidth * 2;
++    lockArc[2].height = lineWidth * 2;
++    lockArc[2].angle1 = 0 * 64;
++    lockArc[2].angle2 = 90 * 64;
++
++    lockArc[3].x = midPoint.x - downRectWidth / 2 - lineWidth;
++    lockArc[3].y = midPoint.y + downRectHeight;
++    lockArc[3].width = lineWidth * 2;
++    lockArc[3].height = lineWidth * 2;
++    lockArc[3].angle1 = -180 * 64;
++    lockArc[3].angle2 = 90 * 64;
++
++    lockArc[4].x = midPoint.x + downRectWidth / 2 - lineWidth;
++    lockArc[4].y = midPoint.y + downRectHeight;
++    lockArc[4].width = lineWidth * 2;
++    lockArc[4].height = lineWidth * 2;
++    lockArc[4].angle1 = -90 * 64;
++    lockArc[4].angle2 = 90 * 64;
++
++    lockArc[5].x = midPoint.x - lineWidth / 2;
++    lockArc[5].y = midPoint.y + lineWidth * 3;
++    lockArc[5].width = lineWidth;
++    lockArc[5].height = lineWidth;
++    lockArc[5].angle1 = -360 * 64;
++    lockArc[5].angle2 = 360 * 64;
++
++    gcvalue[0].val = lockPixel;
++    gcvalue[1].val = lineWidth;
++
++    ChangeGC(client, pGC, GCForeground | GCLineWidth, gcvalue);
++    ValidateGC(pDraw, pGC);
++    (*pGC->ops->PolyArc) (pDraw, pGC, 6, lockArc);
++
++    DDXPointPtr pointsLeftLockLine = NULL;
++    pointsLeftLockLine = malloc(2 * sizeof(xPoint));
++    if (pointsLeftLockLine == NULL) {
++        failed = 1;
++        goto failsafe;
++    }
++
++    pointsLeftLockLine[0].x = lockArc[0].x;
++    pointsLeftLockLine[0].y = lockArc[0].y + upRectHeight / 2;
++
++    pointsLeftLockLine[1].x = lockArc[0].x;
++    pointsLeftLockLine[1].y = lockArc[0].y + upRectHeight / 2 + lockLineLength;
++
++    (*pGC->ops->Polylines) (pDraw, pGC, 0, 2, pointsLeftLockLine);
++
++    DDXPointPtr pointsRightLockLine = NULL;
++    pointsRightLockLine = malloc(2 * sizeof(xPoint));
++    if (!pointsRightLockLine) {
++        failed = 1;
++        goto failsafe;
++    }
++
++    pointsRightLockLine[0].x = lockArc[0].x + upRectWidth;
++    pointsRightLockLine[0].y = lockArc[0].y + upRectHeight / 2;
++
++    pointsRightLockLine[1].x = lockArc[0].x + upRectWidth;
++    pointsRightLockLine[1].y = lockArc[0].y + upRectHeight / 2 + lockLineLength;
++
++    (*pGC->ops->Polylines) (pDraw, pGC, 0, 2, pointsRightLockLine);
++
++    DDXPointPtr pointsMidLockLine = NULL;
++    pointsMidLockLine = malloc(2 * sizeof(xPoint));
++    if (!pointsMidLockLine) {
++        failed = 1;
++        goto failsafe;
++    }
++
++    pointsMidLockLine[0].x = midPoint.x;
++    pointsMidLockLine[0].y = lockArc[5].y + lineWidth;
++
++    pointsMidLockLine[1].x = midPoint.x;
++    pointsMidLockLine[1].y = lockArc[5].y + lineWidth * 3;
++
++    (*pGC->ops->Polylines) (pDraw, pGC, 0, 2, pointsMidLockLine);
++
++    DDXPointPtr pointsDownRecTopLine = NULL;
++    pointsDownRecTopLine = malloc(2 * sizeof(xPoint));
++    if (!pointsDownRecTopLine) {
++        failed = 1;
++        goto failsafe;
++    }
++
++    pointsDownRecTopLine[0].x = lockArc[1].x + lineWidth;
++    pointsDownRecTopLine[0].y = lockArc[1].y;
++
++    pointsDownRecTopLine[1].x = lockArc[2].x + lineWidth;
++    pointsDownRecTopLine[1].y = lockArc[2].y;
++
++    (*pGC->ops->Polylines) (pDraw, pGC, 0, 2, pointsDownRecTopLine);
++
++    DDXPointPtr pointsDownRecLeftLine = NULL;
++    pointsDownRecLeftLine = malloc(2 * sizeof(xPoint));
++    if (!pointsDownRecLeftLine) {
++        failed = 1;
++        goto failsafe;
++    }
++
++    pointsDownRecLeftLine[0].x = lockArc[1].x;
++    pointsDownRecLeftLine[0].y = lockArc[1].y + lineWidth;
++
++    pointsDownRecLeftLine[1].x = lockArc[3].x;
++    pointsDownRecLeftLine[1].y = lockArc[3].y + lineWidth;
++
++    (*pGC->ops->Polylines) (pDraw, pGC, 0, 2, pointsDownRecLeftLine);
++
++    DDXPointPtr pointsDownRecBottomLine = NULL;
++    pointsDownRecBottomLine = malloc(2 * sizeof(xPoint));
++    if (!pointsDownRecBottomLine) {
++        failed = 1;
++        goto failsafe;
++    }
++
++    pointsDownRecBottomLine[0].x = lockArc[3].x + lineWidth;
++    pointsDownRecBottomLine[0].y = lockArc[3].y + lineWidth * 2;
++
++    pointsDownRecBottomLine[1].x = lockArc[4].x + lineWidth;
++    pointsDownRecBottomLine[1].y = lockArc[4].y + lineWidth * 2;
++
++    (*pGC->ops->Polylines) (pDraw, pGC, 0, 2, pointsDownRecBottomLine);
++
++    DDXPointPtr pointsDownRecRightLine = NULL;
++    pointsDownRecRightLine = malloc(2 * sizeof(xPoint));
++    if (!pointsDownRecRightLine) {
++        failed = 1;
++        goto failsafe;
++    }
++
++    pointsDownRecRightLine[0].x = lockArc[2].x + lineWidth * 2;
++    pointsDownRecRightLine[0].y = lockArc[2].y + lineWidth;
++
++    pointsDownRecRightLine[1].x = lockArc[4].x + lineWidth * 2;
++    pointsDownRecRightLine[1].y = lockArc[4].y + lineWidth;
++
++    (*pGC->ops->Polylines) (pDraw, pGC, 0, 2, pointsDownRecRightLine);
++
++failsafe:
++    free(pointsBg);
++    free(lockArc);
++    free(pointsLeftLockLine);
++    free(pointsRightLockLine);
++    free(pointsMidLockLine);
++    free(pointsDownRecTopLine);
++    free(pointsDownRecLeftLine);
++    free(pointsDownRecBottomLine);
++    free(pointsDownRecRightLine);
++
++    return failed;
++}
++
++void UaceCensorImage(ClientPtr client,
++                DrawablePtr pSrc,
++                DrawablePtr pDst,
++                int x, int y, int w, int h)
++{
++    RegionRec imageRegion;
++    BoxRec imageBox;
++    imageBox.x1 = pSrc->x + x;
++    imageBox.y1 = pSrc->y + y;
++    imageBox.x2 = pSrc->x + x + w;
++    imageBox.y2 = pSrc->y + y + h;
++    RegionInit(&imageRegion, &imageBox, 1);
++    GCPtr pScratchGC = GetScratchGC(pSrc->depth, pSrc->pScreen);
++    for (int i = 0; i < protectedWindowCount; i++) {
++        if (protectedWindowList[i]) {
++            DrawablePtr pWindowDraw;
++            const int nSuccess = dixLookupDrawable(&pWindowDraw,
++                    protectedWindowList[i], client, 0, DixReadAccess);
++            ClientPtr pClient = clients[CLIENT_ID(protectedWindowList[i])];
++            ClientPtr sClient = clients[CLIENT_ID(pSrc->id)];
++            const pid_t xorgPid = getpid();
++            // When the source is the protected window itself or the root window, intercept
++            if (nSuccess == Success && pClient &&
++                (pClient == sClient || xorgPid == sClient->clientIds->pid)) {
++                xRectangle pRects;
++                pRects.x = pWindowDraw->x - imageBox.x1;
++                pRects.y = pWindowDraw->y - imageBox.y1;
++                pRects.width = pWindowDraw->width;
++                pRects.height = pWindowDraw->height;
++                CreateCensorImage(client,
++                    pScratchGC, pDst, pRects, bgPixel, lockPixel);
++            }
++        }
++    }
++    RegionUninit(&imageRegion);
++    FreeScratchGC(pScratchGC);
++}
++
++/**
++ * Check if a client is a window manager by checking if it owns the WM_S<screen> selection
++ * Window managers typically acquire WM_S0, WM_S1, etc. selections to declare themselves
++ */
++Bool IsClientWindowManager(ClientPtr client, ScreenPtr pScreen)
++{
++    char wmSelectionName[32];
++    Atom wmSelectionAtom;
++    Selection *pSel;
++    int rc;
++
++    if (!client || !pScreen)
++        return FALSE;
++
++    snprintf(wmSelectionName, sizeof(wmSelectionName), "WM_S%d", pScreen->myNum);
++
++    wmSelectionAtom = MakeAtom(wmSelectionName, strlen(wmSelectionName), FALSE);
++    if (wmSelectionAtom == None)
++        return FALSE;
++
++    rc = dixLookupSelection(&pSel, wmSelectionAtom, client, DixReadAccess);
++    if (rc != Success || !pSel)
++        return FALSE;
++
++    return (pSel->client == client);
++}
++
+ static int
+ DoGetImage(ClientPtr client, int format, Drawable drawable,
+            int x, int y, int width, int height,
+@@ -2163,6 +2492,7 @@ DoGetImage(ClientPtr client, int format, Drawable drawable,
+ 
+     relx = x;
+     rely = y;
++    Bool isWindowManager = IsClientWindowManager(client, pDraw->pScreen);
+ 
+     if (pDraw->type == DRAWABLE_WINDOW) {
+         WindowPtr pWin = (WindowPtr) pDraw;
+@@ -2283,16 +2613,23 @@ DoGetImage(ClientPtr client, int format, Drawable drawable,
+                                          width,
+                                          nlines,
+                                          format, planemask, (void *) pBuf);
+-            if (pVisibleRegion)
++            if (pVisibleRegion) {
+                 XaceCensorImage(client, pVisibleRegion, widthBytesLine,
+                                 pDraw, x, y + linesDone, width,
+                                 nlines, format, pBuf);
++            }
+ 
+             /* Note that this is NOT a call to WriteSwappedDataToClient,
+                as we do NOT byte swap */
+             ReformatImage(pBuf, (int) (nlines * widthBytesLine),
+                           BitsPerPixel(pDraw->depth), ClientOrder(client));
+-
++            if (!isWindowManager) {
++                int depth = format == ZPixmap ? pDraw->depth : 1;
++                int bitsPerPixel = format == ZPixmap ? pDraw->bitsPerPixel : 1;
++                PixmapPtr pPix = GetScratchPixmapHeader(pDraw->pScreen, width, nlines, depth, bitsPerPixel, widthBytesLine, (void *) pBuf);
++                UaceCensorImage(client, pDraw, &pPix->drawable, widthBytesLine, x, y + linesDone, width);
++                FreeScratchPixmapHeader(pPix);
++            }
+             WriteToClient(client, (int) (nlines * widthBytesLine), pBuf);
+             linesDone += nlines;
+         }
+diff --git a/dix/dispatch.h b/dix/dispatch.h
+index 939a6b9..afad9d3 100644
+--- a/dix/dispatch.h
++++ b/dix/dispatch.h
+@@ -142,4 +142,9 @@ int ProcUninstallColormap(ClientPtr /* client */ );
+ int ProcUnmapSubwindows(ClientPtr /* client */ );
+ int ProcUnmapWindow(ClientPtr /* client */ );
+ 
++Bool IsClientWindowManager(ClientPtr client , ScreenPtr pScreen );
++void UaceCensorImage(ClientPtr client, DrawablePtr pSrc, DrawablePtr pDst, int x, int y, int w, int h);
++int CreateCensorImage(ClientPtr client, GCPtr pGC, DrawablePtr pDraw,
++        xRectangle pRects, unsigned int bgPixel, unsigned int lockPixel);
++
+ #endif                          /* DISPATCH_H */
+diff --git a/include/window.h b/include/window.h
+index 7a22feb..2bbcdc8 100644
+--- a/include/window.h
++++ b/include/window.h
+@@ -232,4 +232,8 @@ extern _X_EXPORT void PrintWindowTree(void);
+ extern _X_EXPORT void PrintPassiveGrabs(void);
+ 
+ extern _X_EXPORT VisualPtr WindowGetVisual(WindowPtr /*pWin*/);
++
++extern _X_EXPORT void SetProtectedWindow(Window window);
++extern _X_EXPORT void RemoveProtectedWindow(Window window);
++
+ #endif                          /* WINDOW_H */
+-- 
+2.50.1
+

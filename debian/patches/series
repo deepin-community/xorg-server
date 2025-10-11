@@ -14,6 +14,7 @@ Resolve_xorg_crashing_whith_displaylink_unplugging.patch
 add-zx-device-id.patch
 add-Glenfly-arise-pci-ids.patch
 0001-config-Preserve-section-data-when-parsing-duplicate-files.patch
+0001-feat-implement-screenshot-protection-for-secure-wind.patch
 #backport: gles support
 glamor-gles/1000-glamor-GLES-fixes-part-1.patch
 glamor-gles/1001-glamor-add-gl_PointSize-for-ES-shaders.patch
