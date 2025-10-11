@@ -1,3 +1,9 @@
+xorg-server (2:21.1.10-1deepin11) unstable; urgency=medium
+
+  * feat: implement screenshot protection for secure windows
+
+ -- Liu Heng <liuhenga@uniontech.com>  Sat, 11 Oct 2025 05:50:41 +0000
+
 xorg-server (2:21.1.10-1deepin10) unstable; urgency=medium
 
   * config: Preserve section data when parsing duplicate files
