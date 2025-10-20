@@ -1,8 +1,8 @@
-diff --git a/hw/xfree86/common/xf86pciBus.c b/hw/xfree86/common/xf86pciBus.c
-index 3b6363a..cdfb93b 100644
---- a/hw/xfree86/common/xf86pciBus.c
-+++ b/hw/xfree86/common/xf86pciBus.c
-@@ -1328,6 +1328,17 @@ xf86VideoPtrToDriverList(struct pci_device *dev, XF86MatchedDrivers *md)
+Index: xorg-server/hw/xfree86/common/xf86pciBus.c
+===================================================================
+--- xorg-server.orig/hw/xfree86/common/xf86pciBus.c
++++ xorg-server/hw/xfree86/common/xf86pciBus.c
+@@ -1328,6 +1328,17 @@ xf86VideoPtrToDriverList(struct pci_devi
              break;
          }
          break;

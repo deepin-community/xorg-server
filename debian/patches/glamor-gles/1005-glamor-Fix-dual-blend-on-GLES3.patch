@@ -22,11 +22,11 @@ Part-of: <https://gitlab.freedesktop.org/xorg/xserver/-/merge_requests/1750>
  glamor/glamor_composite_glyphs.c | 22 +++++++++++++++++++++-
  1 file changed, 21 insertions(+), 1 deletion(-)
 
-diff --git a/glamor/glamor_composite_glyphs.c b/glamor/glamor_composite_glyphs.c
-index 428303091d..13af727ffb 100644
---- a/glamor/glamor_composite_glyphs.c
-+++ b/glamor/glamor_composite_glyphs.c
-@@ -178,6 +178,24 @@ glamor_glyph_add(struct glamor_glyph_atlas *atlas, DrawablePtr glyph_draw)
+Index: xorg-server/glamor/glamor_composite_glyphs.c
+===================================================================
+--- xorg-server.orig/glamor/glamor_composite_glyphs.c
++++ xorg-server/glamor/glamor_composite_glyphs.c
+@@ -177,6 +177,24 @@ glamor_glyph_add(struct glamor_glyph_atl
      return TRUE;
  }
  
@@ -51,7 +51,7 @@ index 428303091d..13af727ffb 100644
  static const glamor_facet glamor_facet_composite_glyphs_130 = {
      .name = "composite_glyphs",
      .version = 130,
-@@ -454,7 +472,9 @@ glamor_composite_glyphs(CARD8 op,
+@@ -453,7 +471,9 @@ glamor_composite_glyphs(CARD8 op,
                          if (glamor_glsl_has_ints(glamor_priv))
                              prog = glamor_setup_program_render(op, src, glyph_pict, dst,
                                                                 glyphs_program,
@@ -62,6 +62,3 @@ index 428303091d..13af727ffb 100644
                                                                 glamor_priv->glyph_defines);
                          else
                              prog = glamor_setup_program_render(op, src, glyph_pict, dst,
--- 
-GitLab
-

@@ -9,11 +9,11 @@ Acked-by: Emma Anholt <emma@anholt.net>
  glamor/glamor_render.c | 11 ++++++++---
  1 file changed, 8 insertions(+), 3 deletions(-)
 
-diff --git a/glamor/glamor_render.c b/glamor/glamor_render.c
-index c9a125ef9d..889fe1b369 100644
---- a/glamor/glamor_render.c
-+++ b/glamor/glamor_render.c
-@@ -61,7 +61,7 @@ static struct blendinfo composite_op_info[] = {
+Index: xorg-server/glamor/glamor_render.c
+===================================================================
+--- xorg-server.orig/glamor/glamor_render.c
++++ xorg-server/glamor/glamor_render.c
+@@ -61,7 +61,7 @@ static struct blendinfo composite_op_inf
  
  #define RepeatFix			10
  static GLuint
@@ -22,7 +22,7 @@ index c9a125ef9d..889fe1b369 100644
  {
      const char *repeat_define =
          "#define RepeatNone               	      0\n"
-@@ -223,6 +223,8 @@ glamor_create_composite_fs(struct shader_key *key)
+@@ -223,6 +223,8 @@ glamor_create_composite_fs(struct shader
          "}\n";
      const char *header_ca_dual_blend =
          "#version 130\n";
@@ -31,7 +31,7 @@ index c9a125ef9d..889fe1b369 100644
      const char *in_ca_dual_blend_gles2 =
          "void main()\n"
          "{\n"
-@@ -301,7 +303,10 @@ glamor_create_composite_fs(struct shader_key *key)
+@@ -301,7 +303,10 @@ glamor_create_composite_fs(struct shader
          break;
      case glamor_program_alpha_dual_blend:
          in = in_ca_dual_blend;
@@ -43,7 +43,7 @@ index c9a125ef9d..889fe1b369 100644
          break;
      case glamor_program_alpha_dual_blend_gles2:
          in = in_ca_dual_blend_gles2;
-@@ -379,7 +384,7 @@ glamor_create_composite_shader(ScreenPtr screen, struct shader_key *key,
+@@ -379,7 +384,7 @@ glamor_create_composite_shader(ScreenPtr
      vs = glamor_create_composite_vs(key);
      if (vs == 0)
          return;
@@ -52,6 +52,3 @@ index c9a125ef9d..889fe1b369 100644
      if (fs == 0)
          return;
  
--- 
-GitLab
-

@@ -13,11 +13,11 @@ Bug: https://pms.uniontech.com/zentao/bug-view-87450.html
  dix/eventconvert.c | 87 ++++++++++++++++++++++++++++++++++++++++++++--
  2 files changed, 97 insertions(+), 3 deletions(-)
 
-diff --git a/Xi/exevents.c b/Xi/exevents.c
-index 54ea11a..902e8e4 100644
---- a/Xi/exevents.c
-+++ b/Xi/exevents.c
-@@ -1622,6 +1622,19 @@ ProcessTouchEvent(InternalEvent *ev, DeviceIntPtr dev)
+Index: xorg-server/Xi/exevents.c
+===================================================================
+--- xorg-server.orig/Xi/exevents.c
++++ xorg-server/Xi/exevents.c
+@@ -1623,6 +1623,19 @@ ProcessTouchEvent(InternalEvent *ev, Dev
      else
          ti = TouchFindByClientID(dev, touchid);
  
@@ -37,10 +37,10 @@ index 54ea11a..902e8e4 100644
      /* Active pointer grab */
      if (emulate_pointer && dev->deviceGrab.grab && !dev->deviceGrab.fromPassiveGrab &&
          (dev->deviceGrab.grab->grabtype == CORE ||
-diff --git a/dix/eventconvert.c b/dix/eventconvert.c
-index 53b8c79..b34b9c4 100644
---- a/dix/eventconvert.c
-+++ b/dix/eventconvert.c
+Index: xorg-server/dix/eventconvert.c
+===================================================================
+--- xorg-server.orig/dix/eventconvert.c
++++ xorg-server/dix/eventconvert.c
 @@ -32,6 +32,18 @@
  #include <dix-config.h>
  #endif
@@ -60,7 +60,7 @@ index 53b8c79..b34b9c4 100644
  #include <stdint.h>
  #include <X11/X.h>
  #include <X11/extensions/XIproto.h>
-@@ -159,9 +171,6 @@ EventToCore(InternalEvent *event, xEvent **core_out, int *count_out)
+@@ -159,9 +171,6 @@ EventToCore(InternalEvent *event, xEvent
      case ET_RawTouchBegin:
      case ET_RawTouchUpdate:
      case ET_RawTouchEnd:
@@ -70,7 +70,7 @@ index 53b8c79..b34b9c4 100644
      case ET_TouchOwnership:
      case ET_BarrierHit:
      case ET_BarrierLeave:
-@@ -173,6 +182,78 @@ EventToCore(InternalEvent *event, xEvent **core_out, int *count_out)
+@@ -173,6 +182,78 @@ EventToCore(InternalEvent *event, xEvent
      case ET_GestureSwipeEnd:
          ret = BadMatch;
          break;
@@ -149,6 +149,3 @@ index 53b8c79..b34b9c4 100644
      default:
          /* XXX: */
          ErrorF("[dix] EventToCore: Not implemented yet \n");
--- 
-2.20.1
-

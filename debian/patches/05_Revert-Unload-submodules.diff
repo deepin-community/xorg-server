@@ -10,8 +10,10 @@ This doesn't seem to work quite well.  See Debian bug#686152.
  hw/xfree86/common/xf86Helper.c |    6 ++++++
  1 file changed, 6 insertions(+)
 
---- a/hw/xfree86/common/xf86Helper.c
-+++ b/hw/xfree86/common/xf86Helper.c
+Index: xorg-server/hw/xfree86/common/xf86Helper.c
+===================================================================
+--- xorg-server.orig/hw/xfree86/common/xf86Helper.c
++++ xorg-server/hw/xfree86/common/xf86Helper.c
 @@ -1508,7 +1508,13 @@ xf86LoadOneModule(const char *name, void
  void
  xf86UnloadSubModule(void *mod)

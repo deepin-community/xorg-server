@@ -6,8 +6,10 @@ There's no libnettle udeb.
  configure.ac |    2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
---- a/configure.ac
-+++ b/configure.ac
+Index: xorg-server/configure.ac
+===================================================================
+--- xorg-server.orig/configure.ac
++++ xorg-server/configure.ac
 @@ -1582,7 +1582,7 @@ fi
  if test "x$with_sha1" = xlibnettle; then
  	AC_DEFINE([HAVE_SHA1_IN_LIBNETTLE], [1],

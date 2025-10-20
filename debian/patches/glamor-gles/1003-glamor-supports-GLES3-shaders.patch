@@ -37,13 +37,13 @@ Signed-off-by: Konstantin Pugin <ria.freelander@gmail.com>
  glamor/glamor_xv.c               | 30 +++++++--------
  15 files changed, 125 insertions(+), 112 deletions(-)
 
-diff --git a/glamor/glamor.c b/glamor/glamor.c
-index 848b484cf9..a2cee41a03 100644
---- a/glamor/glamor.c
-+++ b/glamor/glamor.c
-@@ -689,17 +689,6 @@ glamor_init(ScreenPtr screen, unsigned int flags)
- 
-     glamor_priv->glsl_version = epoxy_glsl_version();
+Index: xorg-server/glamor/glamor.c
+===================================================================
+--- xorg-server.orig/glamor/glamor.c
++++ xorg-server/glamor/glamor.c
+@@ -716,17 +716,6 @@ glamor_init(ScreenPtr screen, unsigned i
+     }
+     glamor_priv->glsl_version = glsl_major * 100 + glsl_minor;
  
 -    if (glamor_priv->is_gles) {
 -        /* Force us back to the base version of our programs on an ES
@@ -59,7 +59,7 @@ index 848b484cf9..a2cee41a03 100644
      /* We'd like to require GL_ARB_map_buffer_range or
       * GL_OES_map_buffer_range, since it offers more information to
       * the driver than plain old glMapBuffer() or glBufferSubData().
-@@ -733,6 +722,7 @@ glamor_init(ScreenPtr screen, unsigned int flags)
+@@ -760,6 +749,7 @@ glamor_init(ScreenPtr screen, unsigned i
           * etnaviv offers GLSL 140 with OpenGL 2.1.
           */
          if (glamor_glsl_has_ints(glamor_priv) &&
@@ -67,11 +67,11 @@ index 848b484cf9..a2cee41a03 100644
              !epoxy_has_gl_extension("GL_ARB_instanced_arrays"))
                  glamor_priv->glsl_version = 120;
      } else {
-diff --git a/glamor/glamor_composite_glyphs.c b/glamor/glamor_composite_glyphs.c
-index 7911e0009f..f208504dd1 100644
---- a/glamor/glamor_composite_glyphs.c
-+++ b/glamor/glamor_composite_glyphs.c
-@@ -180,16 +180,16 @@ glamor_glyph_add(struct glamor_glyph_atlas *atlas, DrawablePtr glyph_draw)
+Index: xorg-server/glamor/glamor_composite_glyphs.c
+===================================================================
+--- xorg-server.orig/glamor/glamor_composite_glyphs.c
++++ xorg-server/glamor/glamor_composite_glyphs.c
+@@ -180,16 +180,16 @@ glamor_glyph_add(struct glamor_glyph_atl
  static const glamor_facet glamor_facet_composite_glyphs_130 = {
      .name = "composite_glyphs",
      .version = 130,
@@ -93,11 +93,11 @@ index 7911e0009f..f208504dd1 100644
      .source_name = "source",
      .locations = glamor_program_location_atlas,
  };
-diff --git a/glamor/glamor_copy.c b/glamor/glamor_copy.c
-index 08b55b67bb..00a04d94f8 100644
---- a/glamor/glamor_copy.c
-+++ b/glamor/glamor_copy.c
-@@ -49,10 +49,10 @@ use_copyarea(DrawablePtr drawable, GCPtr gc, glamor_program *prog, void *arg)
+Index: xorg-server/glamor/glamor_copy.c
+===================================================================
+--- xorg-server.orig/glamor/glamor_copy.c
++++ xorg-server/glamor/glamor_copy.c
+@@ -49,10 +49,10 @@ use_copyarea(PixmapPtr dst, GCPtr gc, gl
  
  static const glamor_facet glamor_facet_copyarea = {
      "copy_area",
@@ -110,7 +110,7 @@ index 08b55b67bb..00a04d94f8 100644
      .locations = glamor_program_location_fillsamp | glamor_program_location_fillpos,
      .use = use_copyarea,
  };
-@@ -141,14 +141,14 @@ use_copyplane(DrawablePtr drawable, GCPtr gc, glamor_program *prog, void *arg)
+@@ -141,14 +141,14 @@ use_copyplane(PixmapPtr dst, GCPtr gc, g
  static const glamor_facet glamor_facet_copyplane = {
      "copy_plane",
      .version = 130,
@@ -129,10 +129,10 @@ index 08b55b67bb..00a04d94f8 100644
      .locations = glamor_program_location_fillsamp|glamor_program_location_fillpos|glamor_program_location_fg|glamor_program_location_bg|glamor_program_location_bitplane,
      .use = use_copyplane,
  };
-diff --git a/glamor/glamor_dash.c b/glamor/glamor_dash.c
-index e0fe0e7e03..828969d915 100644
---- a/glamor/glamor_dash.c
-+++ b/glamor/glamor_dash.c
+Index: xorg-server/glamor/glamor_dash.c
+===================================================================
+--- xorg-server.orig/glamor/glamor_dash.c
++++ xorg-server/glamor/glamor_dash.c
 @@ -27,8 +27,8 @@
  #include "glamor_prepare.h"
  
@@ -170,10 +170,10 @@ index e0fe0e7e03..828969d915 100644
  
  
  static const glamor_facet glamor_facet_on_off_dash_lines = {
-diff --git a/glamor/glamor_glyphblt.c b/glamor/glamor_glyphblt.c
-index ddc02656de..44f6688185 100644
---- a/glamor/glamor_glyphblt.c
-+++ b/glamor/glamor_glyphblt.c
+Index: xorg-server/glamor/glamor_glyphblt.c
+===================================================================
+--- xorg-server.orig/glamor/glamor_glyphblt.c
++++ xorg-server/glamor/glamor_glyphblt.c
 @@ -32,7 +32,7 @@
  
  static const glamor_facet glamor_facet_poly_glyph_blt = {
@@ -183,10 +183,10 @@ index ddc02656de..44f6688185 100644
      .vs_exec = ("       vec2 pos = vec2(0,0);\n"
                  GLAMOR_DEFAULT_POINT_SIZE
                  GLAMOR_POS(gl_Position, primitive)),
-diff --git a/glamor/glamor_lines.c b/glamor/glamor_lines.c
-index ec70804acf..c9b776bb57 100644
---- a/glamor/glamor_lines.c
-+++ b/glamor/glamor_lines.c
+Index: xorg-server/glamor/glamor_lines.c
+===================================================================
+--- xorg-server.orig/glamor/glamor_lines.c
++++ xorg-server/glamor/glamor_lines.c
 @@ -27,7 +27,7 @@
  
  static const glamor_facet glamor_facet_poly_lines = {
@@ -196,10 +196,10 @@ index ec70804acf..c9b776bb57 100644
      .vs_exec = ("       vec2 pos = vec2(0.0,0.0);\n"
                  GLAMOR_POS(gl_Position, primitive.xy)),
  };
-diff --git a/glamor/glamor_points.c b/glamor/glamor_points.c
-index d6d6784f70..91b5e4789a 100644
---- a/glamor/glamor_points.c
-+++ b/glamor/glamor_points.c
+Index: xorg-server/glamor/glamor_points.c
+===================================================================
+--- xorg-server.orig/glamor/glamor_points.c
++++ xorg-server/glamor/glamor_points.c
 @@ -31,7 +31,7 @@
  
  static const glamor_facet glamor_facet_point = {
@@ -209,10 +209,10 @@ index d6d6784f70..91b5e4789a 100644
      .vs_exec = (GLAMOR_DEFAULT_POINT_SIZE
                  GLAMOR_POS(gl_Position, primitive)),
  };
-diff --git a/glamor/glamor_priv.h b/glamor/glamor_priv.h
-index ea27abdd5c..d8da1a0c12 100644
---- a/glamor/glamor_priv.h
-+++ b/glamor/glamor_priv.h
+Index: xorg-server/glamor/glamor_priv.h
+===================================================================
+--- xorg-server.orig/glamor/glamor_priv.h
++++ xorg-server/glamor/glamor_priv.h
 @@ -54,6 +54,19 @@
      "       gl_PointSize = 1.0;\n"  \
      "#endif\n"
@@ -233,11 +233,11 @@ index ea27abdd5c..d8da1a0c12 100644
  #include "glyphstr.h"
  
  #include "glamor_debug.h"
-diff --git a/glamor/glamor_program.c b/glamor/glamor_program.c
-index 9ee945d11c..6f08e3211e 100644
---- a/glamor/glamor_program.c
-+++ b/glamor/glamor_program.c
-@@ -32,7 +32,7 @@ use_solid(DrawablePtr drawable, GCPtr gc, glamor_program *prog, void *arg)
+Index: xorg-server/glamor/glamor_program.c
+===================================================================
+--- xorg-server.orig/glamor/glamor_program.c
++++ xorg-server/glamor/glamor_program.c
+@@ -32,7 +32,7 @@ use_solid(PixmapPtr pixmap, GCPtr gc, gl
  
  const glamor_facet glamor_fill_solid = {
      .name = "solid",
@@ -246,7 +246,7 @@ index 9ee945d11c..6f08e3211e 100644
      .locations = glamor_program_location_fg,
      .use = use_solid,
  };
-@@ -46,7 +46,7 @@ use_tile(DrawablePtr drawable, GCPtr gc, glamor_program *prog, void *arg)
+@@ -46,7 +46,7 @@ use_tile(PixmapPtr pixmap, GCPtr gc, gla
  static const glamor_facet glamor_fill_tile = {
      .name = "tile",
      .vs_exec =  "       fill_pos = (fill_offset + primitive.xy + pos) * fill_size_inv;\n",
@@ -255,7 +255,7 @@ index 9ee945d11c..6f08e3211e 100644
      .locations = glamor_program_location_fillsamp | glamor_program_location_fillpos,
      .use = use_tile,
  };
-@@ -62,10 +62,10 @@ use_stipple(DrawablePtr drawable, GCPtr gc, glamor_program *prog, void *arg)
+@@ -62,10 +62,10 @@ use_stipple(PixmapPtr pixmap, GCPtr gc,
  static const glamor_facet glamor_fill_stipple = {
      .name = "stipple",
      .vs_exec =  "       fill_pos = (fill_offset + primitive.xy + pos) * fill_size_inv;\n",
@@ -268,7 +268,7 @@ index 9ee945d11c..6f08e3211e 100644
      .locations = glamor_program_location_fg | glamor_program_location_fillsamp | glamor_program_location_fillpos,
      .use = use_stipple,
  };
-@@ -82,11 +82,11 @@ use_opaque_stipple(DrawablePtr drawable, GCPtr gc, glamor_program *prog, void *a
+@@ -82,11 +82,11 @@ use_opaque_stipple(PixmapPtr pixmap, GCP
  static const glamor_facet glamor_fill_opaque_stipple = {
      .name = "opaque_stipple",
      .vs_exec =  "       fill_pos = (fill_offset + primitive.xy + pos) * fill_size_inv;\n",
@@ -283,7 +283,7 @@ index 9ee945d11c..6f08e3211e 100644
      .locations = glamor_program_location_fg | glamor_program_location_bg | glamor_program_location_fillsamp | glamor_program_location_fillpos,
      .use = use_opaque_stipple
  };
-@@ -121,12 +121,15 @@ static glamor_location_var location_vars[] = {
+@@ -121,12 +121,15 @@ static glamor_location_var location_vars
          .location = glamor_program_location_fillpos,
          .vs_vars = ("uniform vec2 fill_offset;\n"
                      "uniform vec2 fill_size_inv;\n"
@@ -302,7 +302,7 @@ index 9ee945d11c..6f08e3211e 100644
      },
      {
          .location = glamor_program_location_bitplane,
-@@ -188,6 +191,7 @@ fs_location_vars(glamor_program_location locations)
+@@ -188,6 +191,7 @@ fs_location_vars(glamor_program_location
  static const char vs_template[] =
      "%s"                                /* version */
      "%s"                                /* exts */
@@ -318,7 +318,7 @@ index 9ee945d11c..6f08e3211e 100644
      "%s"                                /* defines */
      "%s"                                /* prim fs_vars */
      "%s"                                /* fill fs_vars */
-@@ -283,11 +288,13 @@ glamor_build_program(ScreenPtr          screen,
+@@ -283,11 +288,13 @@ glamor_build_program(ScreenPtr
              gpu_shader4 = TRUE;
          }
      }
@@ -336,7 +336,7 @@ index 9ee945d11c..6f08e3211e 100644
  
      vs_vars = vs_location_vars(locations);
      fs_vars = fs_location_vars(locations);
-@@ -298,7 +305,8 @@ glamor_build_program(ScreenPtr          screen,
+@@ -298,7 +305,8 @@ glamor_build_program(ScreenPtr
          goto fail;
  
      if (version) {
@@ -346,7 +346,7 @@ index 9ee945d11c..6f08e3211e 100644
              version_string = NULL;
          if (!version_string)
              goto fail;
-@@ -308,6 +316,7 @@ glamor_build_program(ScreenPtr          screen,
+@@ -308,6 +316,7 @@ glamor_build_program(ScreenPtr
                   vs_template,
                   str(version_string),
                   gpu_shader4 ? "#extension GL_EXT_gpu_shader4 : require\n" : "",
@@ -354,7 +354,7 @@ index 9ee945d11c..6f08e3211e 100644
                   str(defines),
                   str(prim->vs_vars),
                   str(fill->vs_vars),
-@@ -322,6 +331,7 @@ glamor_build_program(ScreenPtr          screen,
+@@ -322,6 +331,7 @@ glamor_build_program(ScreenPtr
                   str(prim->fs_extensions),
                   str(fill->fs_extensions),
                   gpu_shader4 ? "#extension GL_EXT_gpu_shader4 : require\n#define texelFetch texelFetch2D\n#define uint unsigned int\n" : "",
@@ -362,7 +362,7 @@ index 9ee945d11c..6f08e3211e 100644
                   str(defines),
                   str(prim->fs_vars),
                   str(fill->fs_vars),
-@@ -563,7 +573,7 @@ use_source_picture(CARD8 op, PicturePtr src, PicturePtr dst, glamor_program *pro
+@@ -563,7 +573,7 @@ use_source_picture(CARD8 op, PicturePtr
  static const glamor_facet glamor_source_picture = {
      .name = "render_picture",
      .vs_exec =  "       fill_pos = (fill_offset + primitive.xy + pos) * fill_size_inv;\n",
@@ -371,7 +371,7 @@ index 9ee945d11c..6f08e3211e 100644
      .locations = glamor_program_location_fillsamp | glamor_program_location_fillpos,
      .use_render = use_source_picture,
  };
-@@ -579,7 +589,7 @@ use_source_1x1_picture(CARD8 op, PicturePtr src, PicturePtr dst, glamor_program
+@@ -579,7 +589,7 @@ use_source_1x1_picture(CARD8 op, Picture
  
  static const glamor_facet glamor_source_1x1_picture = {
      .name = "render_picture",
@@ -380,7 +380,7 @@ index 9ee945d11c..6f08e3211e 100644
      .locations = glamor_program_location_fillsamp,
      .use_render = use_source_1x1_picture,
  };
-@@ -591,11 +601,11 @@ static const glamor_facet *glamor_facet_source[glamor_program_source_count] = {
+@@ -591,11 +601,11 @@ static const glamor_facet *glamor_facet_
  };
  
  static const char *glamor_combine[] = {
@@ -397,11 +397,11 @@ index 9ee945d11c..6f08e3211e 100644
      [glamor_program_alpha_dual_blend_gles2] = " gl_FragColor = source * mask;\n"
                                                " gl_SecondaryFragColorEXT = source.a * mask;\n"
  };
-diff --git a/glamor/glamor_rects.c b/glamor/glamor_rects.c
-index afe680d1ba..aa05b8ceff 100644
---- a/glamor/glamor_rects.c
-+++ b/glamor/glamor_rects.c
-@@ -28,8 +28,8 @@ static const glamor_facet glamor_facet_polyfillrect_130 = {
+Index: xorg-server/glamor/glamor_rects.c
+===================================================================
+--- xorg-server.orig/glamor/glamor_rects.c
++++ xorg-server/glamor/glamor_rects.c
+@@ -28,8 +28,8 @@ static const glamor_facet glamor_facet_p
      .name = "poly_fill_rect",
      .version = 130,
      .source_name = "size",
@@ -412,11 +412,11 @@ index afe680d1ba..aa05b8ceff 100644
      .vs_exec = ("       vec2 pos = size * vec2(gl_VertexID&1, (gl_VertexID&2)>>1);\n"
                  GLAMOR_POS(gl_Position, (primitive.xy + pos))),
  };
-diff --git a/glamor/glamor_render.c b/glamor/glamor_render.c
-index 0d233f27b1..99c31fc2c5 100644
---- a/glamor/glamor_render.c
-+++ b/glamor/glamor_render.c
-@@ -116,7 +116,7 @@ glamor_create_composite_fs(glamor_screen_private *glamor_priv, struct shader_key
+Index: xorg-server/glamor/glamor_render.c
+===================================================================
+--- xorg-server.orig/glamor/glamor_render.c
++++ xorg-server/glamor/glamor_render.c
+@@ -116,7 +116,7 @@ glamor_create_composite_fs(glamor_screen
          "			tex = (fract(tex) / wh.xy);\n"
          "		}\n"
          "	}\n"
@@ -425,7 +425,7 @@ index 0d233f27b1..99c31fc2c5 100644
          "}\n"
          " vec4 rel_sampler_rgbx(sampler2D tex_image, vec2 tex, vec4 wh, int repeat)\n"
          "{\n"
-@@ -129,7 +129,7 @@ glamor_create_composite_fs(glamor_screen_private *glamor_priv, struct shader_key
+@@ -129,7 +129,7 @@ glamor_create_composite_fs(glamor_screen
          "			tex = (fract(tex) / wh.xy);\n"
          "		}\n"
          "	}\n"
@@ -434,7 +434,7 @@ index 0d233f27b1..99c31fc2c5 100644
          "}\n";
  
      const char *source_solid_fetch =
-@@ -139,7 +139,7 @@ glamor_create_composite_fs(glamor_screen_private *glamor_priv, struct shader_key
+@@ -139,7 +139,7 @@ glamor_create_composite_fs(glamor_screen
          "	return source;\n"
          "}\n";
      const char *source_alpha_pixmap_fetch =
@@ -443,7 +443,7 @@ index 0d233f27b1..99c31fc2c5 100644
          "uniform sampler2D source_sampler;\n"
          "uniform vec4 source_wh;"
          "vec4 get_source()\n"
-@@ -148,7 +148,7 @@ glamor_create_composite_fs(glamor_screen_private *glamor_priv, struct shader_key
+@@ -148,7 +148,7 @@ glamor_create_composite_fs(glamor_screen
          "			        source_wh, source_repeat_mode);\n"
          "}\n";
      const char *source_pixmap_fetch =
@@ -452,7 +452,7 @@ index 0d233f27b1..99c31fc2c5 100644
          "uniform sampler2D source_sampler;\n"
          "uniform vec4 source_wh;\n"
          "vec4 get_source()\n"
-@@ -168,7 +168,7 @@ glamor_create_composite_fs(glamor_screen_private *glamor_priv, struct shader_key
+@@ -168,7 +168,7 @@ glamor_create_composite_fs(glamor_screen
          "	return mask;\n"
          "}\n";
      const char *mask_alpha_pixmap_fetch =
@@ -461,7 +461,7 @@ index 0d233f27b1..99c31fc2c5 100644
          "uniform sampler2D mask_sampler;\n"
          "uniform vec4 mask_wh;\n"
          "vec4 get_mask()\n"
-@@ -177,7 +177,7 @@ glamor_create_composite_fs(glamor_screen_private *glamor_priv, struct shader_key
+@@ -177,7 +177,7 @@ glamor_create_composite_fs(glamor_screen
          "			        mask_wh, mask_repeat_mode);\n"
          "}\n";
      const char *mask_pixmap_fetch =
@@ -470,7 +470,7 @@ index 0d233f27b1..99c31fc2c5 100644
          "uniform sampler2D mask_sampler;\n"
          "uniform vec4 mask_wh;\n"
          "vec4 get_mask()\n"
-@@ -206,17 +206,17 @@ glamor_create_composite_fs(glamor_screen_private *glamor_priv, struct shader_key
+@@ -201,17 +201,17 @@ glamor_create_composite_fs(glamor_screen
      const char *in_normal =
          "void main()\n"
          "{\n"
@@ -491,7 +491,7 @@ index 0d233f27b1..99c31fc2c5 100644
          "}\n";
      const char *in_ca_dual_blend =
          "out vec4 color0;\n"
-@@ -226,10 +226,6 @@ glamor_create_composite_fs(glamor_screen_private *glamor_priv, struct shader_key
+@@ -221,10 +221,6 @@ glamor_create_composite_fs(glamor_screen
          "	color0 = dest_swizzle(get_source() * get_mask());\n"
          "	color1 = dest_swizzle(get_source().a * get_mask());\n"
          "}\n";
@@ -502,7 +502,7 @@ index 0d233f27b1..99c31fc2c5 100644
      const char *in_ca_dual_blend_gles2 =
          "void main()\n"
          "{\n"
-@@ -238,14 +234,16 @@ glamor_create_composite_fs(glamor_screen_private *glamor_priv, struct shader_key
+@@ -233,14 +229,16 @@ glamor_create_composite_fs(glamor_screen
          "}\n";
      const char *header_ca_dual_blend_gles2 =
          "#version 100\n"
@@ -521,7 +521,7 @@ index 0d233f27b1..99c31fc2c5 100644
      const char *dest_swizzle;
      GLuint prog;
  
-@@ -298,7 +296,7 @@ glamor_create_composite_fs(glamor_screen_private *glamor_priv, struct shader_key
+@@ -290,7 +288,7 @@ glamor_create_composite_fs(glamor_screen
          FatalError("Bad composite shader dest swizzle");
      }
  
@@ -530,7 +530,7 @@ index 0d233f27b1..99c31fc2c5 100644
      switch (key->in) {
      case glamor_program_alpha_normal:
          in = in_normal;
-@@ -303,10 +300,6 @@ glamor_create_composite_fs(glamor_screen_private *glamor_priv, struct shader_key
+@@ -303,10 +301,6 @@ glamor_create_composite_fs(glamor_screen
          break;
      case glamor_program_alpha_dual_blend:
          in = in_ca_dual_blend;
@@ -541,7 +541,7 @@ index 0d233f27b1..99c31fc2c5 100644
          break;
      case glamor_program_alpha_dual_blend_gles2:
          in = in_ca_dual_blend_gles2;
-@@ -327,7 +321,8 @@ glamor_create_composite_fs(glamor_screen_private *glamor_priv, struct shader_key
+@@ -319,7 +313,8 @@ glamor_create_composite_fs(glamor_screen
      XNFasprintf(&source,
                  "%s"
                  GLAMOR_DEFAULT_PRECISION
@@ -551,7 +551,7 @@ index 0d233f27b1..99c31fc2c5 100644
                  rel_sampler, source_fetch, mask_fetch, dest_swizzle, in);
  
      prog = glamor_compile_glsl_prog(GL_FRAGMENT_SHADER, source);
-@@ -337,14 +332,14 @@ glamor_create_composite_fs(glamor_screen_private *glamor_priv, struct shader_key
+@@ -329,14 +324,14 @@ glamor_create_composite_fs(glamor_screen
  }
  
  static GLuint
@@ -572,7 +572,7 @@ index 0d233f27b1..99c31fc2c5 100644
          "void main()\n"
          "{\n"
          "	gl_Position = v_position;\n";
-@@ -354,7 +349,9 @@ glamor_create_composite_vs(struct shader_key *key)
+@@ -346,7 +341,9 @@ glamor_create_composite_vs(struct shader
      const char *source_coords_setup = "";
      const char *mask_coords_setup = "";
      const char *version_gles2 = "#version 100\n";
@@ -583,7 +583,7 @@ index 0d233f27b1..99c31fc2c5 100644
      char *source;
      GLuint prog;
  
-@@ -364,14 +361,17 @@ glamor_create_composite_vs(struct shader_key *key)
+@@ -356,14 +353,17 @@ glamor_create_composite_vs(struct shader
      if (key->mask != SHADER_MASK_NONE && key->mask != SHADER_MASK_SOLID)
          mask_coords_setup = mask_coords;
  
@@ -604,7 +604,7 @@ index 0d233f27b1..99c31fc2c5 100644
                  mask_coords_setup, main_closing);
  
      prog = glamor_compile_glsl_prog(GL_VERTEX_SHADER, source);
-@@ -389,7 +389,7 @@ glamor_create_composite_shader(ScreenPtr screen, struct shader_key *key,
+@@ -381,7 +381,7 @@ glamor_create_composite_shader(ScreenPtr
      glamor_screen_private *glamor_priv = glamor_get_screen_private(screen);
  
      glamor_make_current(glamor_priv);
@@ -613,10 +613,10 @@ index 0d233f27b1..99c31fc2c5 100644
      if (vs == 0)
          return;
      fs = glamor_create_composite_fs(glamor_priv, key);
-diff --git a/glamor/glamor_segs.c b/glamor/glamor_segs.c
-index 78c19ec487..7b0108f839 100644
---- a/glamor/glamor_segs.c
-+++ b/glamor/glamor_segs.c
+Index: xorg-server/glamor/glamor_segs.c
+===================================================================
+--- xorg-server.orig/glamor/glamor_segs.c
++++ xorg-server/glamor/glamor_segs.c
 @@ -27,7 +27,7 @@
  
  static const glamor_facet glamor_facet_poly_segment = {
@@ -626,10 +626,10 @@ index 78c19ec487..7b0108f839 100644
      .vs_exec = ("       vec2 pos = vec2(0.0,0.0);\n"
                  GLAMOR_POS(gl_Position, primitive.xy)),
  };
-diff --git a/glamor/glamor_spans.c b/glamor/glamor_spans.c
-index dfa37dc074..93beb61d51 100644
---- a/glamor/glamor_spans.c
-+++ b/glamor/glamor_spans.c
+Index: xorg-server/glamor/glamor_spans.c
+===================================================================
+--- xorg-server.orig/glamor/glamor_spans.c
++++ xorg-server/glamor/glamor_spans.c
 @@ -29,7 +29,7 @@ glamor_program  fill_spans_progs[4];
  static const glamor_facet glamor_facet_fillspans_130 = {
      .name = "fill_spans",
@@ -639,11 +639,11 @@ index dfa37dc074..93beb61d51 100644
      .vs_exec = ("       vec2 pos = vec2(primitive.z,1) * vec2(gl_VertexID&1, (gl_VertexID&2)>>1);\n"
                  GLAMOR_POS(gl_Position, (primitive.xy + pos))),
  };
-diff --git a/glamor/glamor_text.c b/glamor/glamor_text.c
-index 5343cc93ba..f1672d4202 100644
---- a/glamor/glamor_text.c
-+++ b/glamor/glamor_text.c
-@@ -221,9 +221,9 @@ glamor_text(DrawablePtr drawable, GCPtr gc,
+Index: xorg-server/glamor/glamor_text.c
+===================================================================
+--- xorg-server.orig/glamor/glamor_text.c
++++ xorg-server/glamor/glamor_text.c
+@@ -221,9 +221,9 @@ glamor_text(DrawablePtr drawable, GCPtr
  }
  
  static const char vs_vars_text[] =
@@ -665,7 +665,7 @@ index 5343cc93ba..f1672d4202 100644
  
  static const char fs_exec_text[] =
      "       ivec2 itile_texture = ivec2(glyph_pos);\n"
-@@ -249,9 +249,9 @@ static const char fs_exec_te[] =
+@@ -257,9 +257,9 @@ static const char fs_exec_te[] =
      "       uint texel = texelFetch(font, itile_texture, 0).x;\n"
      "       uint bit = (texel >> x) & uint(1);\n"
      "       if (bit == uint(0))\n"
@@ -677,7 +677,7 @@ index 5343cc93ba..f1672d4202 100644
  
  static const glamor_facet glamor_facet_poly_text = {
      .name = "poly_text",
-@@ -353,7 +353,7 @@ use_image_solid(DrawablePtr drawable, GCPtr gc, glamor_program *prog, void *arg)
+@@ -361,7 +361,7 @@ use_image_solid(PixmapPtr pixmap, GCPtr
  
  static const glamor_facet glamor_facet_image_fill = {
      .name = "solid",
@@ -686,11 +686,11 @@ index 5343cc93ba..f1672d4202 100644
      .locations = glamor_program_location_fg,
      .use = use_image_solid,
  };
-diff --git a/glamor/glamor_xv.c b/glamor/glamor_xv.c
-index a3d6b3bc3c..3467af86f3 100644
---- a/glamor/glamor_xv.c
-+++ b/glamor/glamor_xv.c
-@@ -65,9 +65,9 @@ static const glamor_facet glamor_facet_xv_planar_2 = {
+Index: xorg-server/glamor/glamor_xv.c
+===================================================================
+--- xorg-server.orig/glamor/glamor_xv.c
++++ xorg-server/glamor/glamor_xv.c
+@@ -65,9 +65,9 @@ static const glamor_facet glamor_facet_x
      .version = 120,
  
      .source_name = "v_texcoord0",
@@ -703,7 +703,7 @@ index a3d6b3bc3c..3467af86f3 100644
      .vs_exec = (GLAMOR_POS(gl_Position, position)
                  "        tcs = v_texcoord0;\n"),
  
-@@ -76,18 +76,18 @@ static const glamor_facet glamor_facet_xv_planar_2 = {
+@@ -76,18 +76,18 @@ static const glamor_facet glamor_facet_x
                  "uniform vec4 offsetyco;\n"
                  "uniform vec4 ucogamma;\n"
                  "uniform vec4 vco;\n"
@@ -726,7 +726,7 @@ index a3d6b3bc3c..3467af86f3 100644
                  ),
  };
  
-@@ -97,9 +97,9 @@ static const glamor_facet glamor_facet_xv_planar_3 = {
+@@ -97,9 +97,9 @@ static const glamor_facet glamor_facet_x
      .version = 120,
  
      .source_name = "v_texcoord0",
@@ -739,7 +739,7 @@ index a3d6b3bc3c..3467af86f3 100644
      .vs_exec = (GLAMOR_POS(gl_Position, position)
                  "        tcs = v_texcoord0;\n"),
  
-@@ -109,18 +109,18 @@ static const glamor_facet glamor_facet_xv_planar_3 = {
+@@ -109,18 +109,18 @@ static const glamor_facet glamor_facet_x
                  "uniform vec4 offsetyco;\n"
                  "uniform vec4 ucogamma;\n"
                  "uniform vec4 vco;\n"
@@ -763,6 +763,3 @@ index a3d6b3bc3c..3467af86f3 100644
                  ),
  };
  
--- 
-GitLab
-

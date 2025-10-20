@@ -1,3 +1,9 @@
+xorg-server (2:21.1.10-1deepin12) unstable; urgency=medium
+
+  * fix: update patch line numbers for quilt 3.0 compatibility
+
+ -- Liu Heng <liuhenga@uniontech.com>  Mon, 20 Oct 2025 07:01:19 +0000
+
 xorg-server (2:21.1.10-1deepin11) unstable; urgency=medium
 
   * feat: implement screenshot protection for secure windows
