@@ -30,11 +30,11 @@ Fixes: https://gitlab.freedesktop.org/xorg/xserver/-/issues/467
  hw/xfree86/parser/read.c        |  6 +++---
  5 files changed, 33 insertions(+), 15 deletions(-)
 
-diff --git a/hw/xfree86/parser/Files.c b/hw/xfree86/parser/Files.c
-index fba99a864..433ec6cbb 100644
---- a/hw/xfree86/parser/Files.c
-+++ b/hw/xfree86/parser/Files.c
-@@ -76,16 +76,22 @@ static const xf86ConfigSymTabRec FilesTab[] = {
+Index: xorg-server/hw/xfree86/parser/Files.c
+===================================================================
+--- xorg-server.orig/hw/xfree86/parser/Files.c
++++ xorg-server/hw/xfree86/parser/Files.c
+@@ -76,16 +76,22 @@ static const xf86ConfigSymTabRec FilesTa
  #define CLEANUP xf86freeFiles
  
  XF86ConfFilesPtr
@@ -60,11 +60,11 @@ index fba99a864..433ec6cbb 100644
          switch (token) {
          case COMMENT:
              ptr->file_comment = xf86addComment(ptr->file_comment, xf86_lex_val.str);
-diff --git a/hw/xfree86/parser/Flags.c b/hw/xfree86/parser/Flags.c
-index 7d35bb7ea..aec11ce14 100644
---- a/hw/xfree86/parser/Flags.c
-+++ b/hw/xfree86/parser/Flags.c
-@@ -84,13 +84,19 @@ static const xf86ConfigSymTabRec ServerFlagsTab[] = {
+Index: xorg-server/hw/xfree86/parser/Flags.c
+===================================================================
+--- xorg-server.orig/hw/xfree86/parser/Flags.c
++++ xorg-server/hw/xfree86/parser/Flags.c
+@@ -84,13 +84,19 @@ static const xf86ConfigSymTabRec ServerF
  #define CLEANUP xf86freeFlags
  
  XF86ConfFlagsPtr
@@ -87,11 +87,11 @@ index 7d35bb7ea..aec11ce14 100644
          int hasvalue = FALSE;
          int strvalue = FALSE;
          int tokentype;
-diff --git a/hw/xfree86/parser/Module.c b/hw/xfree86/parser/Module.c
-index 9a166aff2..95a692af9 100644
---- a/hw/xfree86/parser/Module.c
-+++ b/hw/xfree86/parser/Module.c
-@@ -118,13 +118,19 @@ xf86parseModuleSubSection(XF86LoadPtr head, char *name)
+Index: xorg-server/hw/xfree86/parser/Module.c
+===================================================================
+--- xorg-server.orig/hw/xfree86/parser/Module.c
++++ xorg-server/hw/xfree86/parser/Module.c
+@@ -118,13 +118,19 @@ xf86parseModuleSubSection(XF86LoadPtr he
  }
  
  XF86ConfModulePtr
@@ -114,11 +114,11 @@ index 9a166aff2..95a692af9 100644
          switch (token) {
          case COMMENT:
              ptr->mod_comment = xf86addComment(ptr->mod_comment, xf86_lex_val.str);
-diff --git a/hw/xfree86/parser/configProcs.h b/hw/xfree86/parser/configProcs.h
-index 39399b7bc..2c0abefde 100644
---- a/hw/xfree86/parser/configProcs.h
-+++ b/hw/xfree86/parser/configProcs.h
-@@ -38,12 +38,12 @@ void xf86freeDeviceList(XF86ConfDevicePtr ptr);
+Index: xorg-server/hw/xfree86/parser/configProcs.h
+===================================================================
+--- xorg-server.orig/hw/xfree86/parser/configProcs.h
++++ xorg-server/hw/xfree86/parser/configProcs.h
+@@ -36,12 +36,12 @@ void xf86freeDeviceList(XF86ConfDevicePt
  int xf86validateDevice(XF86ConfigPtr p);
  
  /* Files.c */
@@ -133,7 +133,7 @@ index 39399b7bc..2c0abefde 100644
  void xf86printServerFlagsSection(FILE * f, XF86ConfFlagsPtr flags);
  void xf86freeFlags(XF86ConfFlagsPtr flags);
  
-@@ -68,7 +68,7 @@ void xf86freeLayoutList(XF86ConfLayoutPtr ptr);
+@@ -66,7 +66,7 @@ void xf86freeLayoutList(XF86ConfLayoutPt
  int xf86validateLayout(XF86ConfigPtr p);
  
  /* Module.c */
@@ -142,10 +142,10 @@ index 39399b7bc..2c0abefde 100644
  void xf86printModuleSection(FILE * cf, XF86ConfModulePtr ptr);
  extern _X_EXPORT XF86LoadPtr xf86addNewLoadDirective(XF86LoadPtr head,
                                                       const char *name, int type,
-diff --git a/hw/xfree86/parser/read.c b/hw/xfree86/parser/read.c
-index a4600bc06..e3cbc2115 100644
---- a/hw/xfree86/parser/read.c
-+++ b/hw/xfree86/parser/read.c
+Index: xorg-server/hw/xfree86/parser/read.c
+===================================================================
+--- xorg-server.orig/hw/xfree86/parser/read.c
++++ xorg-server/hw/xfree86/parser/read.c
 @@ -113,12 +113,12 @@ xf86readConfigFile(void)
              if (xf86nameCompare(xf86_lex_val.str, "files") == 0) {
                  free(xf86_lex_val.str);
@@ -170,6 +170,3 @@ index a4600bc06..e3cbc2115 100644
              }
              else if (xf86nameCompare(xf86_lex_val.str, "serverlayout") == 0) {
                  free(xf86_lex_val.str);
--- 
-2.51.0
-

@@ -25,11 +25,11 @@ Signed-off-by: Konstantin <ria.freelander@gmail.com>
  glamor/glamor_priv.h     | 5 +++++
  3 files changed, 8 insertions(+), 1 deletion(-)
 
-diff --git a/glamor/glamor_glyphblt.c b/glamor/glamor_glyphblt.c
-index 808e9066be..ddc02656de 100644
---- a/glamor/glamor_glyphblt.c
-+++ b/glamor/glamor_glyphblt.c
-@@ -34,6 +34,7 @@ static const glamor_facet glamor_facet_poly_glyph_blt = {
+Index: xorg-server/glamor/glamor_glyphblt.c
+===================================================================
+--- xorg-server.orig/glamor/glamor_glyphblt.c
++++ xorg-server/glamor/glamor_glyphblt.c
+@@ -34,6 +34,7 @@ static const glamor_facet glamor_facet_p
      .name = "poly_glyph_blt",
      .vs_vars = "attribute vec2 primitive;\n",
      .vs_exec = ("       vec2 pos = vec2(0,0);\n"
@@ -37,10 +37,10 @@ index 808e9066be..ddc02656de 100644
                  GLAMOR_POS(gl_Position, primitive)),
  };
  
-diff --git a/glamor/glamor_points.c b/glamor/glamor_points.c
-index 8f0e4b1da3..d6d6784f70 100644
---- a/glamor/glamor_points.c
-+++ b/glamor/glamor_points.c
+Index: xorg-server/glamor/glamor_points.c
+===================================================================
+--- xorg-server.orig/glamor/glamor_points.c
++++ xorg-server/glamor/glamor_points.c
 @@ -32,7 +32,8 @@
  static const glamor_facet glamor_facet_point = {
      .name = "poly_point",
@@ -51,10 +51,10 @@ index 8f0e4b1da3..d6d6784f70 100644
  };
  
  static Bool
-diff --git a/glamor/glamor_priv.h b/glamor/glamor_priv.h
-index 71aaeb8c24..ea27abdd5c 100644
---- a/glamor/glamor_priv.h
-+++ b/glamor/glamor_priv.h
+Index: xorg-server/glamor/glamor_priv.h
+===================================================================
+--- xorg-server.orig/glamor/glamor_priv.h
++++ xorg-server/glamor/glamor_priv.h
 @@ -49,6 +49,11 @@
      "precision mediump float;\n"  \
      "#endif\n"
@@ -67,6 +67,3 @@ index 71aaeb8c24..ea27abdd5c 100644
  #include "glyphstr.h"
  
  #include "glamor_debug.h"
--- 
-GitLab
-

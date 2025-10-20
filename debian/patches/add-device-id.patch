@@ -1,6 +1,8 @@
 
---- xorg-server-21.1.10.orig/hw/xfree86/common/xf86pciBus.c
-+++ xorg-server-21.1.10/hw/xfree86/common/xf86pciBus.c
+Index: xorg-server/hw/xfree86/common/xf86pciBus.c
+===================================================================
+--- xorg-server.orig/hw/xfree86/common/xf86pciBus.c
++++ xorg-server/hw/xfree86/common/xf86pciBus.c
 @@ -1302,6 +1302,24 @@ xf86VideoPtrToDriverList(struct pci_devi
          else
              driverList[0] = "xgi";

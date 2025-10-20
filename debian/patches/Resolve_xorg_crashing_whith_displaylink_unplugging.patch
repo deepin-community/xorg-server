@@ -1,7 +1,7 @@
-diff --git a/hw/xfree86/common/xf86DGA.c b/hw/xfree86/common/xf86DGA.c
-index fa70ba2..b38b30f 100644
---- a/hw/xfree86/common/xf86DGA.c
-+++ b/hw/xfree86/common/xf86DGA.c
+Index: xorg-server/hw/xfree86/common/xf86DGA.c
+===================================================================
+--- xorg-server.orig/hw/xfree86/common/xf86DGA.c
++++ xorg-server/hw/xfree86/common/xf86DGA.c
 @@ -268,7 +268,8 @@ DGACloseScreen(ScreenPtr pScreen)
      DGAScreenPtr pScreenPriv = DGA_GET_SCREEN_PRIV(pScreen);
  

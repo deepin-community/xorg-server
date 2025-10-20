@@ -17,11 +17,10 @@ Reviewed-by: Emma Anholt <emma@anholt.net>
  create mode 100644 test/bugs/meson.build
  create mode 100755 test/scripts/xephyr-glamor-gles2-piglit.sh
 
-diff --git a/test/bugs/bug1354.c b/test/bugs/bug1354.c
-new file mode 100644
-index 0000000000..edc3f228c2
+Index: xorg-server/test/bugs/bug1354.c
+===================================================================
 --- /dev/null
-+++ b/test/bugs/bug1354.c
++++ xorg-server/test/bugs/bug1354.c
 @@ -0,0 +1,149 @@
 +#include <xcb/xcb.h>
 +#include <xcb/xcb_aux.h>
@@ -172,12 +171,11 @@ index 0000000000..edc3f228c2
 +	}
 +	return result == 3 ? 0 : 1;
 +}
-diff --git a/test/bugs/meson.build b/test/bugs/meson.build
-new file mode 100644
-index 0000000000..1f5305f56f
+Index: xorg-server/test/bugs/meson.build
+===================================================================
 --- /dev/null
-+++ b/test/bugs/meson.build
-@@ -0,0 +1,51 @@
++++ xorg-server/test/bugs/meson.build
+@@ -0,0 +1,50 @@
 +xcb_dep = dependency('xcb', required: false)
 +xcb_image_dep = dependency('xcb-image', required: false)
 +xcb_util_dep = dependency('xcb-util', required: false)
@@ -225,16 +223,15 @@ index 0000000000..1f5305f56f
 +                    ],
 +                suite: 'xephyr-glamor-gles2',
 +                timeout: 300,
-+                should_fail: true,
 +            )
 +    endif
 +endif
 \ No newline at end of file
-diff --git a/test/meson.build b/test/meson.build
-index a8d9e84973..662eee4ef3 100644
---- a/test/meson.build
-+++ b/test/meson.build
-@@ -9,13 +9,24 @@ piglit_env.set('XSERVER_DIR', meson.source_root())
+Index: xorg-server/test/meson.build
+===================================================================
+--- xorg-server.orig/test/meson.build
++++ xorg-server/test/meson.build
+@@ -9,13 +9,24 @@ piglit_env.set('XSERVER_DIR', meson.sour
  piglit_env.set('XSERVER_BUILDDIR', meson.build_root())
  
  some_ops = ' -o clear,src,dst,over,xor,disjointover'
@@ -286,7 +283,7 @@ index a8d9e84973..662eee4ef3 100644
  if get_option('xvfb')
 @@ -76,6 +99,12 @@ if get_option('xvfb')
              timeout: 1200,
-             suite: 'xephyr-glamor',
+             suite: 'xephr-glamor',
          )
 +        test('XTS',
 +            find_program('scripts/xephyr-glamor-gles2-piglit.sh'),
@@ -322,7 +319,7 @@ index a8d9e84973..662eee4ef3 100644
          endif
      endif
  endif
-@@ -116,6 +163,7 @@ endif
+@@ -103,6 +150,7 @@ endif
  subdir('bigreq')
  subdir('damage')
  subdir('sync')
@@ -330,11 +327,10 @@ index a8d9e84973..662eee4ef3 100644
  
  if build_xorg
  # Tests that require at least some DDX functions in order to fully link
-diff --git a/test/scripts/xephyr-glamor-gles2-piglit.sh b/test/scripts/xephyr-glamor-gles2-piglit.sh
-new file mode 100755
-index 0000000000..59ca12d263
+Index: xorg-server/test/scripts/xephyr-glamor-gles2-piglit.sh
+===================================================================
 --- /dev/null
-+++ b/test/scripts/xephyr-glamor-gles2-piglit.sh
++++ xorg-server/test/scripts/xephyr-glamor-gles2-piglit.sh
 @@ -0,0 +1,34 @@
 +#!/bin/sh
 +
@@ -370,73 +366,11 @@ index 0000000000..59ca12d263
 +        -- \
 +        $XSERVER_BUILDDIR/hw/vfb/Xvfb \
 +        -screen scrn 1280x1024x24
--- 
-GitLab
-
-
-From 24cd5f34f8edcc6621ed9c0f2b1a3df08de7488d Mon Sep 17 00:00:00 2001
-From: Konstantin <ria.freelander@gmail.com>
-Date: Sun, 26 Jun 2022 00:01:54 +0300
-Subject: [PATCH 2/6] glamor: make use of GL_EXT_texture_format_BGRA8888
-
-For 24 and 32 bit depth pictures xserver uses PICT_x8r8g8b8 and PICT_a8r8g8b8 formats,
-which must be backed with GL_BGRA format. It is present in OpenGL ES 2.0 only with
-GL_EXT_texture_format_BGRA8888 extension. We require such extension in glamor_init,
-so, why not to make use of it?
-Fixes #1208
-Fixes #1354
-
-Signed-off-by: Konstantin Pugin <ria.freelander@gmail.com>
-
-Reviewed-by: Adam Jackson <ajax@redhat.com>
-Reviewed-by: Emma Anholt <emma@anholt.net>
----
- glamor/glamor.c         | 8 ++++----
- glamor/glamor_picture.c | 7 ++-----
- test/bugs/meson.build   | 1 -
- 3 files changed, 6 insertions(+), 10 deletions(-)
-
-diff --git a/test/bugs/meson.build b/test/bugs/meson.build
-index 1f5305f56f..470706d565 100644
---- a/test/bugs/meson.build
-+++ b/test/bugs/meson.build
-@@ -45,7 +45,6 @@ if get_option('xvfb')
-                     ],
-                 suite: 'xephyr-glamor-gles2',
-                 timeout: 300,
--                should_fail: true,
-             )
-     endif
- endif
-\ No newline at end of file
--- 
-GitLab
-
-
-From a59531533fb8fd137d21e0578909d8e91c28dff6 Mon Sep 17 00:00:00 2001
-From: Konstantin <ria.freelander@gmail.com>
-Date: Sat, 25 Jun 2022 17:51:15 +0300
-Subject: [PATCH 3/6] glamor: transpose gradients transparently
-
-glUniformMatrix3fv is used with argument transpose set to GL_TRUE.
-According to the Khronos OpenGL ES 2.0 pages transpose must be GL_FALSE.
-Actually we can just return transformed matrix from
-_glamor_gradient_convert_trans_matrix (@anholt suggest),
-so @uvas workaround is not required
-
-Signed-off-by: Konstantin Pugin <ria.freelander@gmail.com>
-
-Reviewed-by: Adam Jackson <ajax@redhat.com>
-Reviewed-by: Emma Anholt <emma@anholt.net>
----
- glamor/glamor_gradient.c | 32 +++++++++++++++++++++-----------
- 1 file changed, 21 insertions(+), 11 deletions(-)
-
-diff --git a/glamor/glamor_gradient.c b/glamor/glamor_gradient.c
-index 7e5d5cca9f..4c7ae4d77c 100644
---- a/glamor/glamor_gradient.c
-+++ b/glamor/glamor_gradient.c
-@@ -605,27 +605,35 @@ _glamor_gradient_convert_trans_matrix(PictTransform *from, float to[3][3],
+Index: xorg-server/glamor/glamor_gradient.c
+===================================================================
+--- xorg-server.orig/glamor/glamor_gradient.c
++++ xorg-server/glamor/glamor_gradient.c
+@@ -605,27 +605,35 @@ _glamor_gradient_convert_trans_matrix(Pi
       * T_s = | w*t21/h  t22      t23/h|
       *       | w*t31    h*t32    t33  |
       *       --                      --
@@ -479,7 +413,7 @@ index 7e5d5cca9f..4c7ae4d77c 100644
             to[0][0], to[0][1], to[0][2],
             to[1][0], to[1][1], to[1][2], to[2][0], to[2][1], to[2][2]);
  }
-@@ -950,11 +958,12 @@ glamor_generate_radial_gradient_picture(ScreenPtr screen,
+@@ -950,11 +958,12 @@ glamor_generate_radial_gradient_picture(
          _glamor_gradient_convert_trans_matrix(src_picture->transform,
                                                transform_mat, width, height, 0);
          glUniformMatrix3fv(transform_mat_uniform_location,
@@ -494,7 +428,7 @@ index 7e5d5cca9f..4c7ae4d77c 100644
      }
  
      if (!_glamor_gradient_set_pixmap_destination
-@@ -1266,11 +1275,12 @@ glamor_generate_linear_gradient_picture(ScreenPtr screen,
+@@ -1266,11 +1275,12 @@ glamor_generate_linear_gradient_picture(
          _glamor_gradient_convert_trans_matrix(src_picture->transform,
                                                transform_mat, width, height, 1);
          glUniformMatrix3fv(transform_mat_uniform_location,
@@ -509,34 +443,11 @@ index 7e5d5cca9f..4c7ae4d77c 100644
      }
  
      if (!_glamor_gradient_set_pixmap_destination
--- 
-GitLab
-
-
-From 65392d27d77fbdb66e874ba3e2d85dbcf46e4583 Mon Sep 17 00:00:00 2001
-From: Yuriy <uuvasiliev@yandex.ru>
-Date: Thu, 16 Sep 2021 14:47:44 +0300
-Subject: [PATCH 4/6] glamor: fix CbCr format handling
-
-In GLES2, we cannot do GL_RED or GL_RG without GL_EXT_texture_rg.
-So, add check for GL_EXT_texture_rg to make it working. Also add
-a yuv2 pixman format into render.h to make Xv yuv rendering works.
-
-Signed-off-by: Yuriy Vasilev <uuvasiliev@yandex.ru>
-
-Reviewed-by: Adam Jackson <ajax@redhat.com>
-Reviewed-by: Emma Anholt <emma@anholt.net>
----
- glamor/glamor.c      | 19 +++++++++++++++----
- glamor/glamor_priv.h |  1 +
- render/picture.h     |  5 ++++-
- 3 files changed, 20 insertions(+), 5 deletions(-)
-
-diff --git a/glamor/glamor.c b/glamor/glamor.c
-index 0a757db356..c6bb01d8e9 100644
---- a/glamor/glamor.c
-+++ b/glamor/glamor.c
-@@ -223,7 +223,7 @@ glamor_create_pixmap(ScreenPtr screen, int w, int h, int depth,
+Index: xorg-server/glamor/glamor.c
+===================================================================
+--- xorg-server.orig/glamor/glamor.c
++++ xorg-server/glamor/glamor.c
+@@ -223,7 +223,7 @@ glamor_create_pixmap(ScreenPtr screen, i
  
      pixmap_priv = glamor_get_pixmap_private(pixmap);
  
@@ -573,77 +484,7 @@ index 0a757db356..c6bb01d8e9 100644
      glamor_priv->cbcr_format.type = GL_UNSIGNED_BYTE;
      glamor_priv->cbcr_format.rendering_supported = TRUE;
  }
-@@ -787,6 +793,11 @@ glamor_init(ScreenPtr screen, unsigned int flags)
-     glamor_priv->has_clear_texture =
-         epoxy_gl_version() >= 44 ||
-         epoxy_has_gl_extension("GL_ARB_clear_texture");
-+    /* GL_EXT_texture_rg is part of GLES3 core */
-+    glamor_priv->has_rg =
-+        (glamor_priv->is_gles && epoxy_gl_version() >= 30) ||
-+        epoxy_has_gl_extension("GL_EXT_texture_rg") ||
-+        epoxy_has_gl_extension("GL_ARB_texture_rg");
- 
-     glamor_priv->can_copyplane = (gl_version >= 30);
- 
-diff --git a/glamor/glamor_priv.h b/glamor/glamor_priv.h
-index 028a6d3740..da20bc5aa6 100644
---- a/glamor/glamor_priv.h
-+++ b/glamor/glamor_priv.h
-@@ -216,6 +216,7 @@ typedef struct glamor_screen_private {
-     Bool has_dual_blend;
-     Bool has_clear_texture;
-     Bool has_texture_swizzle;
-+    Bool has_rg;
-     Bool is_core_profile;
-     Bool can_copyplane;
-     Bool use_gpu_shader4;
-diff --git a/render/picture.h b/render/picture.h
-index 4499a0021c..c3a73d1d8d 100644
---- a/render/picture.h
-+++ b/render/picture.h
-@@ -125,7 +125,10 @@ typedef enum _PictFormatShort {
- /* 1bpp formats */
-     PICT_a1 = PIXMAN_a1,
- 
--    PICT_g1 = PIXMAN_g1
-+    PICT_g1 = PIXMAN_g1,
-+
-+/* YCbCr formats */
-+    PICT_yuv2 = PIXMAN_yuy2
- } PictFormatShort;
- 
- /*
--- 
-GitLab
-
-
-From 05b8401eeb263e1395aa5ceeb8b5cdbeb0585db6 Mon Sep 17 00:00:00 2001
-From: Vasily Khoruzhick <anarsoul@gmail.com>
-Date: Fri, 27 May 2022 18:00:56 -0700
-Subject: [PATCH 5/6] glamor: use dual source blend on GL 2.1 with
- ARB_ES2_compatibility
-
-ARB_blend_func_extended may be exposed even without GLSL 1.30.
-In order to use it we need GLES2 shaders that are available if
-ARB_ES2_compatibility is exposed.
-
-Signed-off-by: Vasily Khoruzhick <anarsoul@gmail.com>
-
-Reviewed-by: Adam Jackson <ajax@redhat.com>
-Reviewed-by: Emma Anholt <emma@anholt.net>
----
- glamor/glamor.c                  |  6 ++++--
- glamor/glamor_composite_glyphs.c | 20 +++++++++++++++++++-
- glamor/glamor_program.c          | 23 ++++++++++++++++-------
- glamor/glamor_program.h          |  5 +++--
- glamor/glamor_render.c           | 32 ++++++++++++++++++++++++++++----
- 5 files changed, 70 insertions(+), 16 deletions(-)
-
-diff --git a/glamor/glamor.c b/glamor/glamor.c
-index c6bb01d8e9..f15b5a18a3 100644
---- a/glamor/glamor.c
-+++ b/glamor/glamor.c
-@@ -788,8 +788,10 @@ glamor_init(ScreenPtr screen, unsigned int flags)
+@@ -810,11 +816,18 @@ glamor_init(ScreenPtr screen, unsigned i
          epoxy_gl_version() >= 30 ||
          epoxy_has_gl_extension("GL_NV_pack_subimage");
      glamor_priv->has_dual_blend =
@@ -656,11 +497,47 @@ index c6bb01d8e9..f15b5a18a3 100644
      glamor_priv->has_clear_texture =
          epoxy_gl_version() >= 44 ||
          epoxy_has_gl_extension("GL_ARB_clear_texture");
-diff --git a/glamor/glamor_composite_glyphs.c b/glamor/glamor_composite_glyphs.c
-index 147e3bb31a..c69b940d40 100644
---- a/glamor/glamor_composite_glyphs.c
-+++ b/glamor/glamor_composite_glyphs.c
-@@ -208,6 +208,22 @@ static const glamor_facet glamor_facet_composite_glyphs_120 = {
++    /* GL_EXT_texture_rg is part of GLES3 core */
++    glamor_priv->has_rg =
++        (glamor_priv->is_gles && epoxy_gl_version() >= 30) ||
++        epoxy_has_gl_extension("GL_EXT_texture_rg") ||
++        epoxy_has_gl_extension("GL_ARB_texture_rg");
+ 
+     glamor_priv->can_copyplane = (gl_version >= 30);
+ 
+Index: xorg-server/glamor/glamor_priv.h
+===================================================================
+--- xorg-server.orig/glamor/glamor_priv.h
++++ xorg-server/glamor/glamor_priv.h
+@@ -216,6 +216,7 @@ typedef struct glamor_screen_private {
+     Bool has_dual_blend;
+     Bool has_clear_texture;
+     Bool has_texture_swizzle;
++    Bool has_rg;
+     Bool is_core_profile;
+     Bool can_copyplane;
+     Bool use_gpu_shader4;
+Index: xorg-server/render/picture.h
+===================================================================
+--- xorg-server.orig/render/picture.h
++++ xorg-server/render/picture.h
+@@ -125,7 +125,10 @@ typedef enum _PictFormatShort {
+ /* 1bpp formats */
+     PICT_a1 = PIXMAN_a1,
+ 
+-    PICT_g1 = PIXMAN_g1
++    PICT_g1 = PIXMAN_g1,
++
++/* YCbCr formats */
++    PICT_yuv2 = PIXMAN_yuy2
+ } PictFormatShort;
+ 
+ /*
+Index: xorg-server/glamor/glamor_composite_glyphs.c
+===================================================================
+--- xorg-server.orig/glamor/glamor_composite_glyphs.c
++++ xorg-server/glamor/glamor_composite_glyphs.c
+@@ -208,6 +208,22 @@ static const glamor_facet glamor_facet_c
      .locations = glamor_program_location_atlas,
  };
  
@@ -694,10 +571,10 @@ index 147e3bb31a..c69b940d40 100644
                                                                 glamor_priv->glyph_defines);
                          if (!prog)
                              goto bail_one;
-diff --git a/glamor/glamor_program.c b/glamor/glamor_program.c
-index d8ddb4c773..46a506aafe 100644
---- a/glamor/glamor_program.c
-+++ b/glamor/glamor_program.c
+Index: xorg-server/glamor/glamor_program.c
+===================================================================
+--- xorg-server.orig/glamor/glamor_program.c
++++ xorg-server/glamor/glamor_program.c
 @@ -201,6 +201,8 @@ static const char vs_template[] =
  static const char fs_template[] =
      "%s"                                /* version */
@@ -707,7 +584,19 @@ index d8ddb4c773..46a506aafe 100644
      GLAMOR_DEFAULT_PRECISION
      "%s"                                /* defines */
      "%s"                                /* prim fs_vars */
-@@ -312,6 +314,8 @@ glamor_build_program(ScreenPtr          screen,
+@@ -281,6 +283,11 @@ glamor_build_program(ScreenPtr
+             gpu_shader4 = TRUE;
+         }
+     }
++    /* For now, fix shader version to GLES as 100. We will fall with 130 shaders
++     * in previous check due to forcibly set 120 glsl for GLES. But this patch
++     * makes xv shaders to work */
++    if(version && glamor_priv->is_gles)
++        version = 100;
+ 
+     vs_vars = vs_location_vars(locations);
+     fs_vars = fs_location_vars(locations);
+@@ -312,6 +319,8 @@ glamor_build_program(ScreenPtr
      if (asprintf(&fs_prog_string,
                   fs_template,
                   str(version_string),
@@ -716,7 +605,7 @@ index d8ddb4c773..46a506aafe 100644
                   gpu_shader4 ? "#extension GL_EXT_gpu_shader4 : require\n#define texelFetch texelFetch2D\n#define uint unsigned int\n" : "",
                   str(defines),
                   str(prim->fs_vars),
-@@ -494,7 +498,8 @@ glamor_set_blend(CARD8 op, glamor_program_alpha alpha, PicturePtr dst)
+@@ -494,7 +503,8 @@ glamor_set_blend(CARD8 op, glamor_progra
      }
  
      /* Set up the source alpha value for blending in component alpha mode. */
@@ -726,7 +615,7 @@ index d8ddb4c773..46a506aafe 100644
          switch (dst_blend) {
          case GL_SRC_ALPHA:
              dst_blend = GL_SRC1_COLOR;
-@@ -581,11 +586,13 @@ static const glamor_facet *glamor_facet_source[glamor_program_source_count] = {
+@@ -581,11 +591,13 @@ static const glamor_facet *glamor_facet_
  };
  
  static const char *glamor_combine[] = {
@@ -745,7 +634,7 @@ index d8ddb4c773..46a506aafe 100644
  };
  
  static Bool
-@@ -633,7 +640,9 @@ glamor_setup_program_render(CARD8                 op,
+@@ -633,7 +645,9 @@ glamor_setup_program_render(CARD8
  
      if (glamor_is_component_alpha(mask)) {
          if (glamor_priv->has_dual_blend) {
@@ -756,10 +645,10 @@ index d8ddb4c773..46a506aafe 100644
          } else {
              /* This only works for PictOpOver */
              if (op != PictOpOver)
-diff --git a/glamor/glamor_program.h b/glamor/glamor_program.h
-index ab6e46f7b5..0bd918fff3 100644
---- a/glamor/glamor_program.h
-+++ b/glamor/glamor_program.h
+Index: xorg-server/glamor/glamor_program.h
+===================================================================
+--- xorg-server.orig/glamor/glamor_program.h
++++ xorg-server/glamor/glamor_program.h
 @@ -44,6 +44,7 @@ typedef enum {
      glamor_program_alpha_ca_first,
      glamor_program_alpha_ca_second,
@@ -768,7 +657,7 @@ index ab6e46f7b5..0bd918fff3 100644
      glamor_program_alpha_count
  } glamor_program_alpha;
  
-@@ -56,8 +57,8 @@ typedef Bool (*glamor_use_render) (CARD8 op, PicturePtr src, PicturePtr dst, gla
+@@ -56,8 +57,8 @@ typedef Bool (*glamor_use_render) (CARD8
  typedef struct {
      const char                          *name;
      const int                           version;
@@ -779,11 +668,11 @@ index ab6e46f7b5..0bd918fff3 100644
      const char                          *vs_vars;
      const char                          *vs_exec;
      const char                          *fs_vars;
-diff --git a/glamor/glamor_render.c b/glamor/glamor_render.c
-index 2af65bf936..c9a125ef9d 100644
---- a/glamor/glamor_render.c
-+++ b/glamor/glamor_render.c
-@@ -223,6 +223,15 @@ glamor_create_composite_fs(struct shader_key *key)
+Index: xorg-server/glamor/glamor_render.c
+===================================================================
+--- xorg-server.orig/glamor/glamor_render.c
++++ xorg-server/glamor/glamor_render.c
+@@ -223,6 +223,15 @@ glamor_create_composite_fs(struct shader
          "}\n";
      const char *header_ca_dual_blend =
          "#version 130\n";
@@ -799,7 +688,7 @@ index 2af65bf936..c9a125ef9d 100644
  
      char *source;
      const char *source_fetch;
-@@ -294,6 +303,10 @@ glamor_create_composite_fs(struct shader_key *key)
+@@ -294,6 +303,10 @@ glamor_create_composite_fs(struct shader
          in = in_ca_dual_blend;
          header = header_ca_dual_blend;
          break;
@@ -810,7 +699,7 @@ index 2af65bf936..c9a125ef9d 100644
      default:
          FatalError("Bad composite IN type");
      }
-@@ -327,6 +340,8 @@ glamor_create_composite_vs(struct shader_key *key)
+@@ -327,6 +340,8 @@ glamor_create_composite_vs(struct shader
      const char *main_closing = "}\n";
      const char *source_coords_setup = "";
      const char *mask_coords_setup = "";
@@ -819,7 +708,7 @@ index 2af65bf936..c9a125ef9d 100644
      char *source;
      GLuint prog;
  
-@@ -336,10 +351,15 @@ glamor_create_composite_vs(struct shader_key *key)
+@@ -336,10 +351,15 @@ glamor_create_composite_vs(struct shader
      if (key->mask != SHADER_MASK_NONE && key->mask != SHADER_MASK_SOLID)
          mask_coords_setup = mask_coords;
  
@@ -837,7 +726,7 @@ index 2af65bf936..c9a125ef9d 100644
  
      prog = glamor_compile_glsl_prog(GL_VERTEX_SHADER, source);
      free(source);
-@@ -701,6 +721,7 @@ combine_pict_format(PictFormatShort * des, const PictFormatShort src,
+@@ -701,6 +721,7 @@ combine_pict_format(PictFormatShort * de
          mask_type = PICT_FORMAT_TYPE(mask);
          break;
      case glamor_program_alpha_dual_blend:
@@ -859,43 +748,3 @@ index 2af65bf936..c9a125ef9d 100644
              else if (op == PictOpSrc || op == PictOpAdd
                       || op == PictOpIn || op == PictOpOut
                       || op == PictOpOverReverse)
--- 
-GitLab
-
-
-From dcba460af3eedb9d41986bd65f4502998b7a5a6c Mon Sep 17 00:00:00 2001
-From: Konstantin <ria.freelander@gmail.com>
-Date: Tue, 28 Jun 2022 12:28:39 +0300
-Subject: [PATCH 6/6] glamor: fix XVideo run with GLES
-
-For now, it sets .version=120, which prevents shader from compiling on ES.
-We just force version of shaders to be always 100 on ES, because we use
-only 120 shaders on ES anyway, and all shaders works.
-
-Signed-off-by: Konstantin Pugin <ria.freelander@gmail.com>
-
-Reviewed-by: Adam Jackson <ajax@redhat.com>
-Reviewed-by: Emma Anholt <emma@anholt.net>
----
- glamor/glamor_program.c | 5 +++++
- 1 file changed, 5 insertions(+)
-
-diff --git a/glamor/glamor_program.c b/glamor/glamor_program.c
-index 46a506aafe..f361b726e2 100644
---- a/glamor/glamor_program.c
-+++ b/glamor/glamor_program.c
-@@ -283,6 +283,11 @@ glamor_build_program(ScreenPtr          screen,
-             gpu_shader4 = TRUE;
-         }
-     }
-+    /* For now, fix shader version to GLES as 100. We will fall with 130 shaders
-+     * in previous check due to forcibly set 120 glsl for GLES. But this patch
-+     * makes xv shaders to work */
-+    if(version && glamor_priv->is_gles)
-+        version = 100;
- 
-     vs_vars = vs_location_vars(locations);
-     fs_vars = fs_location_vars(locations);
--- 
-GitLab
-

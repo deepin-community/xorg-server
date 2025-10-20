@@ -10,11 +10,11 @@ Fixes: ee107cd4
  glamor/glamor_render.c | 6 +++++-
  1 file changed, 5 insertions(+), 1 deletion(-)
 
-diff --git a/glamor/glamor_render.c b/glamor/glamor_render.c
-index 99c31fc2c5..179b62dd81 100644
---- a/glamor/glamor_render.c
-+++ b/glamor/glamor_render.c
-@@ -242,7 +242,11 @@ glamor_create_composite_fs(glamor_screen_private *glamor_priv, struct shader_key
+Index: xorg-server/glamor/glamor_render.c
+===================================================================
+--- xorg-server.orig/glamor/glamor_render.c
++++ xorg-server/glamor/glamor_render.c
+@@ -237,7 +237,11 @@ glamor_create_composite_fs(glamor_screen
      const char *mask_fetch = "";
      const char *in;
      const char *header;
@@ -27,6 +27,3 @@ index 99c31fc2c5..179b62dd81 100644
      const char *header_es = glamor_priv->glsl_version > 100 ? "#version 300 es\n" : "#version 100\n" GLAMOR_COMPAT_DEFINES_FS;
      const char *dest_swizzle;
      GLuint prog;
--- 
-GitLab
-

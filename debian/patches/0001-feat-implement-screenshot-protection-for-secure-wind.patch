@@ -53,11 +53,11 @@ Influence:
  include/window.h |   4 +
  4 files changed, 364 insertions(+), 2 deletions(-)
 
-diff --git a/Xext/shm.c b/Xext/shm.c
-index 071bd1a..747e7d1 100644
---- a/Xext/shm.c
-+++ b/Xext/shm.c
-@@ -60,6 +60,7 @@ in this Software without prior written authorization from The Open Group.
+Index: xorg-server/Xext/shm.c
+===================================================================
+--- xorg-server.orig/Xext/shm.c
++++ xorg-server/Xext/shm.c
+@@ -60,6 +60,7 @@ in this Software without prior written a
  #include <sys/mman.h>
  #include "protocol-versions.h"
  #include "busfault.h"
@@ -94,10 +94,10 @@ index 071bd1a..747e7d1 100644
      WriteToClient(client, sizeof(xShmGetImageReply), &xgi);
  
      return Success;
-diff --git a/dix/dispatch.c b/dix/dispatch.c
-index 8f7452d..93dd6f1 100644
---- a/dix/dispatch.c
-+++ b/dix/dispatch.c
+Index: xorg-server/dix/dispatch.c
+===================================================================
+--- xorg-server.orig/dix/dispatch.c
++++ xorg-server/dix/dispatch.c
 @@ -143,6 +143,9 @@ int ProcInitialConnection();
  #define BITCLEAR(buf, i) MASKWORD(buf, i) &= ~BITMASK(i)
  #define GETBIT(buf, i) (MASKWORD(buf, i) & BITMASK(i))
@@ -455,7 +455,7 @@ index 8f7452d..93dd6f1 100644
  static int
  DoGetImage(ClientPtr client, int format, Drawable drawable,
             int x, int y, int width, int height,
-@@ -2163,6 +2492,7 @@ DoGetImage(ClientPtr client, int format, Drawable drawable,
+@@ -2163,6 +2492,7 @@ DoGetImage(ClientPtr client, int format,
  
      relx = x;
      rely = y;
@@ -463,7 +463,7 @@ index 8f7452d..93dd6f1 100644
  
      if (pDraw->type == DRAWABLE_WINDOW) {
          WindowPtr pWin = (WindowPtr) pDraw;
-@@ -2283,16 +2613,23 @@ DoGetImage(ClientPtr client, int format, Drawable drawable,
+@@ -2283,16 +2613,23 @@ DoGetImage(ClientPtr client, int format,
                                           width,
                                           nlines,
                                           format, planemask, (void *) pBuf);
@@ -489,11 +489,11 @@ index 8f7452d..93dd6f1 100644
              WriteToClient(client, (int) (nlines * widthBytesLine), pBuf);
              linesDone += nlines;
          }
-diff --git a/dix/dispatch.h b/dix/dispatch.h
-index 939a6b9..afad9d3 100644
---- a/dix/dispatch.h
-+++ b/dix/dispatch.h
-@@ -142,4 +142,9 @@ int ProcUninstallColormap(ClientPtr /* client */ );
+Index: xorg-server/dix/dispatch.h
+===================================================================
+--- xorg-server.orig/dix/dispatch.h
++++ xorg-server/dix/dispatch.h
+@@ -142,4 +142,9 @@ int ProcUninstallColormap(ClientPtr /* c
  int ProcUnmapSubwindows(ClientPtr /* client */ );
  int ProcUnmapWindow(ClientPtr /* client */ );
  
@@ -503,11 +503,11 @@ index 939a6b9..afad9d3 100644
 +        xRectangle pRects, unsigned int bgPixel, unsigned int lockPixel);
 +
  #endif                          /* DISPATCH_H */
-diff --git a/include/window.h b/include/window.h
-index 7a22feb..2bbcdc8 100644
---- a/include/window.h
-+++ b/include/window.h
-@@ -232,4 +232,8 @@ extern _X_EXPORT void PrintWindowTree(void);
+Index: xorg-server/include/window.h
+===================================================================
+--- xorg-server.orig/include/window.h
++++ xorg-server/include/window.h
+@@ -232,4 +232,8 @@ extern _X_EXPORT void PrintWindowTree(vo
  extern _X_EXPORT void PrintPassiveGrabs(void);
  
  extern _X_EXPORT VisualPtr WindowGetVisual(WindowPtr /*pWin*/);
@@ -516,6 +516,3 @@ index 7a22feb..2bbcdc8 100644
 +extern _X_EXPORT void RemoveProtectedWindow(Window window);
 +
  #endif                          /* WINDOW_H */
--- 
-2.50.1
-
