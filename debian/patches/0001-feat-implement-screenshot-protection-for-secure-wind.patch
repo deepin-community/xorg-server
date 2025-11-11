@@ -463,7 +463,7 @@ Index: xorg-server/dix/dispatch.c
  
      if (pDraw->type == DRAWABLE_WINDOW) {
          WindowPtr pWin = (WindowPtr) pDraw;
-@@ -2283,16 +2613,23 @@ DoGetImage(ClientPtr client, int format,
+@@ -2283,16 +2613,21 @@ DoGetImage(ClientPtr client, int format,
                                           width,
                                           nlines,
                                           format, planemask, (void *) pBuf);
@@ -480,10 +480,8 @@ Index: xorg-server/dix/dispatch.c
                            BitsPerPixel(pDraw->depth), ClientOrder(client));
 -
 +            if (!isWindowManager) {
-+                int depth = format == ZPixmap ? pDraw->depth : 1;
-+                int bitsPerPixel = format == ZPixmap ? pDraw->bitsPerPixel : 1;
-+                PixmapPtr pPix = GetScratchPixmapHeader(pDraw->pScreen, width, nlines, depth, bitsPerPixel, widthBytesLine, (void *) pBuf);
-+                UaceCensorImage(client, pDraw, &pPix->drawable, widthBytesLine, x, y + linesDone, width);
++                PixmapPtr pPix = GetScratchPixmapHeader(pDraw->pScreen, width, nlines, pDraw->depth, pDraw->bitsPerPixel, widthBytesLine, (void *) pBuf);
++                UaceCensorImage(client, pDraw, &pPix->drawable, x, y + linesDone, width, nlines);
 +                FreeScratchPixmapHeader(pPix);
 +            }
              WriteToClient(client, (int) (nlines * widthBytesLine), pBuf);
