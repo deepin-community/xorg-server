@@ -1,3 +1,9 @@
+xorg-server (2:21.1.10-1deepin13) unstable; urgency=medium
+
+  * fix: correct parameters for UaceCensorImage call
+
+ -- liuheng <liuhenga@uniontech.com>  Tue, 11 Nov 2025 15:08:28 +0800
+
 xorg-server (2:21.1.10-1deepin12) unstable; urgency=medium
 
   * fix: update patch line numbers for quilt 3.0 compatibility
