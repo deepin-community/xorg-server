@@ -1,3 +1,9 @@
+xorg-server (2:21.1.10-1deepin15) unstable; urgency=medium
+
+  * perf: revert "render: Break PICT_a4"
+
+ -- niecheng <niecheng1@uniontech.com>  Tue, 23 Dec 2025 11:23:22 +0800
+
 xorg-server (2:21.1.10-1deepin14) unstable; urgency=medium
 
   * fix: skip security area for minimized windows
