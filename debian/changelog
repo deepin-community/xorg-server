@@ -1,3 +1,9 @@
+xorg-server (2:21.1.10-1deepin16) unstable; urgency=medium
+
+  * fix CVE-2022-49737 
+
+ -- zengwei <zengwei1@uniontech.com>  Fri, 06 Feb 2026 14:30:35 +0800
+
 xorg-server (2:21.1.10-1deepin15) unstable; urgency=medium
 
   * perf: revert "render: Break PICT_a4"
