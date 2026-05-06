@@ -24,3 +24,4 @@ glamor-gles/1004-glamor-Dont-require-EXT_gpu_shader4-unconditionally.patch
 glamor-gles/1005-glamor-Fix-dual-blend-on-GLES3.patch
 0001-bugfix-revert-render-Break-PICT_a4.patch
 CVE-2022-49737.patch
+0001-fix-randr-use-full-transform-for-CRTC-bounds-checking.patch
