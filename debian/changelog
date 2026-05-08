@@ -1,3 +1,9 @@
+xorg-server (2:21.1.10-1deepin18) unstable; urgency=medium
+
+  * Fix CVE-2026-34001: XSYNC Use-after-free in miSyncTriggerFence()
+
+ -- hudeng <hudeng@deepin.org>  Fri, 08 May 2026 13:20:00 +0800
+
 xorg-server (2:21.1.10-1deepin17) unstable; urgency=medium
 
   * feat: use full transform for CRTC bounds checking
