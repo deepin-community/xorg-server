@@ -26,3 +26,4 @@ glamor-gles/1005-glamor-Fix-dual-blend-on-GLES3.patch
 CVE-2022-49737.patch
 0001-fix-randr-use-full-transform-for-CRTC-bounds-checking.patch
 CVE-2026-34001.patch
+CVE-2026-33999.patch
