@@ -1,3 +1,12 @@
+xorg-server (2:21.1.10-1deepin20) unstable; urgency=medium
+
+  * Split CVE-2026-34003 patch into separate patches per CVE: CVE-2026-
+    34002 (CheckKeyActions bounds check) and CVE-2026-34003
+    (CheckKeyTypes/CheckKeySyms/CheckKeyBehaviors/CheckVirtualMods/Check
+    KeyExplicit/CheckVirtualModMap bounds checks)
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 12 May 2026 21:16:03 +0800
+
 xorg-server (2:21.1.10-1deepin19) unstable; urgency=medium
 
   * Security fixes:

@@ -27,4 +27,5 @@ CVE-2022-49737.patch
 0001-fix-randr-use-full-transform-for-CRTC-bounds-checking.patch
 CVE-2026-34001.patch
 CVE-2026-33999.patch
+CVE-2026-34002.patch
 CVE-2026-34003.patch
