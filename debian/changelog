@@ -1,3 +1,12 @@
+xorg-server (2:21.1.10-1deepin19) unstable; urgency=medium
+
+  * Security fixes:
+    - CVE-2026-33999: XKB Integer Underflow in XkbSetCompatMap()
+    - CVE-2026-34002: XKB out-of-bounds access in CheckKeyTypes/CheckKeySyms
+    - CVE-2026-34003: XKB out-of-bounds access in CheckKeyActions
+
+ -- deepin-ci-robot <packages@deepin.org>  Mon, 12 May 2026 15:00:00 +0800
+
 xorg-server (2:21.1.10-1deepin18) unstable; urgency=medium
 
   * Fix CVE-2026-34001: XSYNC Use-after-free in miSyncTriggerFence()
