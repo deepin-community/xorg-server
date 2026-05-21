@@ -22,13 +22,12 @@ Influence: 修复双屏缩放>1.0或CRTC位置非原点时SetScreenSize错误返
  randr/rrscreen.c | 6 +++---
  1 file changed, 3 insertions(+), 3 deletions(-)
 
-diff --git a/randr/rrscreen.c b/randr/rrscreen.c
-index 42f7a75..d4c8e12 100644
---- a/randr/rrscreen.c
-+++ b/randr/rrscreen.c
+Index: xorg-server/randr/rrscreen.c
+===================================================================
+--- xorg-server.orig/randr/rrscreen.c
++++ xorg-server/randr/rrscreen.c
 @@ -269,9 +269,9 @@ ProcRRSetScreenSize(ClientPtr client)
-         RRModePtr mode = crtc->mode;
-
+ 
          if (!RRCrtcIsLeased(crtc) && mode) {
              struct pixman_box16 display_box = {
 -                crtc->x, crtc->y,
@@ -39,6 +38,4 @@ index 42f7a75..d4c8e12 100644
 +                mode->mode.height
              };
              pixman_f_transform_bounds(&crtc->f_transform, &display_box);
-
---
-2.50.1
+ 
