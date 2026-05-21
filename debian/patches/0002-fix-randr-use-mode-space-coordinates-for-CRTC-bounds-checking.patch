@@ -1,0 +1,44 @@
+From 8a3c7f2b9e1d4f6a0c2b8e5d7a3f1c4e6b8d0a2f Mon Sep 17 00:00:00 2001
+From: Shin <shining@uniontech.com>
+Date: Wed, 21 May 2026 10:37:00 +0800
+Subject: [PATCH] fix(randr): use mode-space coordinates for CRTC bounds checking
+
+f_transform already includes Translate(crtc.x, crtc.y), so the display_box
+passed to pixman_f_transform_bounds must be in mode space {0, 0, w, h},
+not framebuffer space {crtc.x, crtc.y, ...}. Using framebuffer-space
+coordinates causes double counting of position and scale, leading to
+BadMatch on dual-screen or scale>1.0 scenarios.
+
+f_transform已包含Translate(crtc.x, crtc.y)，传入pixman_f_transform_bounds
+的display_box必须是mode空间坐标{0,0,w,h}，而非framebuffer空间。
+使用framebuffer空间坐标会导致位置和缩放被双重计算，在双屏或缩放>1.0
+场景下引发BadMatch错误。
+
+Log: 修复CRTC边界检查中display_box坐标空间错误
+PMS: BUG-276065
+Influence: 修复双屏缩放>1.0或CRTC位置非原点时SetScreenSize错误返回BadMatch的问题，
+确保所有场景下屏幕尺寸校验正确。
+---
+ randr/rrscreen.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/randr/rrscreen.c b/randr/rrscreen.c
+index 42f7a75..d4c8e12 100644
+--- a/randr/rrscreen.c
++++ b/randr/rrscreen.c
+@@ -269,9 +269,9 @@ ProcRRSetScreenSize(ClientPtr client)
+         RRModePtr mode = crtc->mode;
+
+         if (!RRCrtcIsLeased(crtc) && mode) {
+             struct pixman_box16 display_box = {
+-                crtc->x, crtc->y,
+-                crtc->x + mode->mode.width,
+-                crtc->y + mode->mode.height
++                0, 0,
++                mode->mode.width,
++                mode->mode.height
+             };
+             pixman_f_transform_bounds(&crtc->f_transform, &display_box);
+
+--
+2.50.1
