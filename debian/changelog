@@ -1,3 +1,9 @@
+xorg-server (2:21.1.10-1deepin21) unstable; urgency=medium
+
+  * fix(randr): use mode-space coordinates for CRTC bounds checking
+
+ -- Shin <shining@uniontech.com>  Thu, 21 May 2026 11:31:52 +0800
+
 xorg-server (2:21.1.10-1deepin20) unstable; urgency=medium
 
   * Split CVE-2026-34003 patch into separate patches per CVE: CVE-2026-
