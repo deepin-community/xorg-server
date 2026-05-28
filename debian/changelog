@@ -1,3 +1,9 @@
+xorg-server (2:21.1.10-1deepin23) unstable; urgency=medium
+
+  * fix(randr): lock pointer to primary CRTC center on multi-screen activation
+
+ -- justforlxz <justforlxz@gmail.com>  Thu, 28 May 2026 19:44:57 +0800
+
 xorg-server (2:21.1.10-1deepin22) unstable; urgency=medium
 
   * fix(patches): convert patch format to Debian quilt format for dpkg-source
