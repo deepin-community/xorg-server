@@ -1,3 +1,10 @@
+xorg-server (2:21.1.10-1deepin24) unstable; urgency=medium
+
+  * Security fix:
+    - CVE-2025-49177: xfixes: Check request length for SetClientDisconnectMode
+
+ -- hudeng <hudeng@deepin.org>  Wed, 03 Jun 2026 13:30:00 +0800
+
 xorg-server (2:21.1.10-1deepin23) unstable; urgency=medium
 
   * fix(randr): lock pointer to primary CRTC center on multi-screen activation
