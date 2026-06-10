@@ -1,6 +1,7 @@
 xorg-server (2:21.1.10-1deepin25) unstable; urgency=medium
 
   * Security fixes:
+    - CVE-2025-49177: xfixes: Check request length for SetClientDisconnectMode
     - CVE-2026-50256: Font alias stack overflow in doListFontsAndAliases
     - CVE-2026-50257: XKB mapWidths stack out-of-bounds write in CheckKeyTypes
     - CVE-2026-50258: XKB num_levels stack overflow in CheckKeyTypes
