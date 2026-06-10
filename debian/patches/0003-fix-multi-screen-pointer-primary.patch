@@ -1,47 +1,29 @@
-From 5e271a417f1759ad42b9f00168dc2667643d897c Mon Sep 17 00:00:00 2001
-From: justforlxz <justforlxz@gmail.com>
-Date: Wed, 27 May 2026 15:26:49 +0800
-Subject: [PATCH] fix(randr): lock pointer to primary CRTC center on multi-screen activation
-
-多屏模式下首次激活时，将鼠标光标锁定到主屏（primary screen）中心位置。
-当检测到 numCrtcs > 1 且有有效的 primaryOutput 时，直接定位到主 CRTC
-几何中心 (crtc->x + scan_width/2, crtc->y + scan_height/2)，
-跳过旧的按欧氏距离吸附逻辑。单屏/无 primaryOutput 场景退回到原行为。
-
-Log: 多屏首次激活时强制鼠标光标到主屏中心
-Influence: 修复多屏模式下首次激活时鼠标可能出现在非主屏的问题
-
----
- randr/rrpointer.c | 19 +++++++++++++++++--
- 1 file changed, 17 insertions(+), 2 deletions(-)
-
-Index: xorg-server/randr/rrpointer.c
+Index: xorg-pointer-fix/randr/rrpointer.c
 ===================================================================
---- xorg-server.orig/randr/rrpointer.c
-+++ xorg-server/randr/rrpointer.c
-@@ -146,8 +146,23 @@ RRPointerScreenConfigured(ScreenPtr pScreen)
-             pCurrentScreen = pRoot ? pRoot->drawable.pScreen : NULL;
+--- xorg-pointer-fix.orig/randr/rrpointer.c
++++ xorg-pointer-fix/randr/rrpointer.c
+@@ -147,7 +147,24 @@ RRPointerScreenConfigured(ScreenPtr pScr
  
              if (pScreen == pCurrentScreen) {
--                GetSpritePosition(pDev, &x, &y);
--                RRPointerToNearestCrtc(pDev, pScreen, x, y, NULL);
+                 GetSpritePosition(pDev, &x, &y);
 +                rrScrPriv(pScreen);
 +                if (pScrPriv->numCrtcs > 1 &&
-+                    pScrPriv->primaryOutput && pScrPriv->primaryOutput->crtc) {
++                    pScrPriv->primaryOutput && pScrPriv->primaryOutput->crtc &&
++                    !RRCrtcContainsPosition(pScrPriv->primaryOutput->crtc, x, y)) {
 +                    RRCrtcPtr primary_crtc = pScrPriv->primaryOutput->crtc;
 +                    RRModePtr mode = primary_crtc->mode;
 +                    if (mode) {
-+                        int scan_width, scan_height;
-+                        RRCrtcGetScanoutSize(primary_crtc, &scan_width, &scan_height);
-+                        x = primary_crtc->x + scan_width / 2;
-+                        y = primary_crtc->y + scan_height / 2;
++                        int sw, sh;
++                        RRCrtcGetScanoutSize(primary_crtc, &sw, &sh);
++                        x = primary_crtc->x + sw / 2;
++                        y = primary_crtc->y + sh / 2;
 +                        (*pScreen->SetCursorPosition)(pDev, pScreen, x, y, TRUE);
 +                        pScrPriv->pointerCrtc = primary_crtc;
++                        GetSpritePosition(pDev, &x, &y);
 +                    }
-+                } else {
-+                    GetSpritePosition(pDev, &x, &y);
-+                    RRPointerToNearestCrtc(pDev, pScreen, x, y, NULL);
 +                }
+                 RRPointerToNearestCrtc(pDev, pScreen, x, y, NULL);
++
              }
          }
      }
