@@ -1,3 +1,12 @@
+xorg-server (2:21.1.10-1deepin26) unstable; urgency=medium
+
+  * Fix CVE-2026-50262: GLX out-of-bounds read/write in ChangeDrawableAttributes
+    (already covered by existing CVE-2026-50264 patch)
+  * Fix CVE-2026-50263: ScreenSaver use-after-free in CreateSaverWindow
+    (already covered by existing CVE-2026-50259 patch)
+
+ -- deepin-ci-robot <packages@deepin.org>  Thu, 18 Jun 2026 10:11:59 +0800
+
 xorg-server (2:21.1.10-1deepin25) unstable; urgency=medium
 
   * Security fixes:
