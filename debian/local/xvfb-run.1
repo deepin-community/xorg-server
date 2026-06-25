@@ -87,6 +87,15 @@ in
 .IR file .
 The default is
 .IR /dev/null .
+As a special case, specifying
+.B /proc/self/fd/2
+or
+.B /dev/stderr
+writes to standard error (without actually reopening the file descriptor), while
+.B /proc/self/fd/1
+or
+.B /dev/stdout
+writes to standard output.
 .TP
 .BI \-f\  file \fR,\fB\ \-\-auth\-file= file
 Store X authentication data in

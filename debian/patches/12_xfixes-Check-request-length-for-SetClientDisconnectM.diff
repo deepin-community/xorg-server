@@ -1,6 +1,8 @@
+From 162419d86bee4bedaae63213e47674054309505e Mon Sep 17 00:00:00 2001
 From: Olivier Fourdan <ofourdan@redhat.com>
 Date: Mon, 28 Apr 2025 10:05:36 +0200
-Subject: xfixes: Check request length for SetClientDisconnectMode
+Subject: [PATCH xserver] xfixes: Check request length for
+ SetClientDisconnectMode
 
 The handler of XFixesSetClientDisconnectMode does not check the client
 request length.
@@ -13,18 +15,21 @@ Fix the issue by checking the request size matches.
 CVE-2025-49177
 
 This issue was discovered by Nils Emmerich <nemmerich@ernw.de> and
-reported by Julian Suleder via ERN Vulnerability Disclosure.
+reported by Julian Suleder via ERNW Vulnerability Disclosure.
 
 Fixes: e167299f6 - xfixes: Add ClientDisconnectMode
 Signed-off-by: Olivier Fourdan <ofourdan@redhat.com>
 Reviewed-by: Peter Hutterer <peter.hutterer@who-t.net>
-Origin: upstream, https://gitlab.freedesktop.org/xorg/xserver/-/commit/ab02fb96b1c701c3bb47617d965522c34befa6af
+(cherry picked from commit fa1e4b0aa13a8586bb2ce8a8623948888f853d44)
 ---
-Index: xorg-server/xfixes/disconnect.c
-===================================================================
---- xorg-server.orig/xfixes/disconnect.c
-+++ xorg-server/xfixes/disconnect.c
-@@ -67,6 +67,7 @@ ProcXFixesSetClientDisconnectMode(Client
+ xfixes/disconnect.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/xfixes/disconnect.c b/xfixes/disconnect.c
+index 77932725e..209e3d8af 100644
+--- a/xfixes/disconnect.c
++++ b/xfixes/disconnect.c
+@@ -67,6 +67,7 @@ ProcXFixesSetClientDisconnectMode(ClientPtr client)
      ClientDisconnectPtr pDisconnect = GetClientDisconnect(client);
  
      REQUEST(xXFixesSetClientDisconnectModeReq);
@@ -32,7 +37,7 @@ Index: xorg-server/xfixes/disconnect.c
  
      pDisconnect->disconnect_mode = stuff->disconnect_mode;
  
-@@ -80,7 +81,7 @@ SProcXFixesSetClientDisconnectMode(Clien
+@@ -80,7 +81,7 @@ SProcXFixesSetClientDisconnectMode(ClientPtr client)
  
      swaps(&stuff->length);
  
@@ -41,3 +46,6 @@ Index: xorg-server/xfixes/disconnect.c
  
      swapl(&stuff->disconnect_mode);
  
+-- 
+2.49.0
+
