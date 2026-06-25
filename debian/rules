@@ -44,7 +44,11 @@ override_dh_auto_build:
 	dh_auto_build --builddirectory=debian/build/udeb
 
 override_dh_auto_test:
+ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
 	dh_auto_test -- -j1 VERBOSE=1
+	# Check basic functionality of Xvfb
+	PATH="debian/build/main/hw/vfb:$$PATH" sh debian/local/xvfb-run -a -e /proc/self/fd/2 -s -noreset xdpyinfo
+endif
 
 override_dh_auto_install:
 	dh_auto_install --builddirectory=debian/build/main \

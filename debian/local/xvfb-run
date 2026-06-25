@@ -79,7 +79,7 @@ find_free_servernum() {
 # Clean up files
 clean_up() {
     if [ -e "$AUTHFILE" ]; then
-        XAUTHORITY=$AUTHFILE xauth remove ":$SERVERNUM" >>"$ERRORFILE" 2>&1
+        XAUTHORITY=$AUTHFILE xauth remove ":$SERVERNUM" >&3 2>&3
     fi
     if [ -n "$XVFB_RUN_TMPDIR" ]; then
         if ! rm -r "$XVFB_RUN_TMPDIR"; then
@@ -88,7 +88,7 @@ clean_up() {
         fi
     fi
     if [ -n "$XVFBPID" ]; then
-        kill "$XVFBPID" >>"$ERRORFILE" 2>&1
+        kill "$XVFBPID" >&3 2>&3
     fi
 }
 
@@ -139,6 +139,22 @@ if ! command -v xauth >/dev/null; then
     exit 3
 fi
 
+# Open fd 3 for diagnostic output from Xvfb, etc.
+case "$ERRORFILE" in
+    (/proc/self/fd/1 | /dev/stdout)
+        # We might not actually be able to write to this if it's a file or
+        # terminal owned by someone else, so duplicate the fd instead
+        exec 3>&1
+        ;;
+    (/proc/self/fd/2 | /dev/stderr)
+        # See above
+        exec 3>&2
+        ;;
+    (*)
+        exec 3>>"$ERRORFILE"
+        ;;
+esac
+
 # tidy up after ourselves
 trap clean_up EXIT
 
@@ -156,13 +172,13 @@ MCOOKIE=$(mcookie)
 tries=10
 while [ $tries -gt 0 ]; do
     tries=$(( $tries - 1 ))
-    XAUTHORITY=$AUTHFILE xauth source - << EOF >>"$ERRORFILE" 2>&1
+    XAUTHORITY=$AUTHFILE xauth source - << EOF >&3 2>&3
 add :$SERVERNUM $XAUTHPROTO $MCOOKIE
 EOF
     # handle SIGUSR1 so Xvfb knows to send a signal when it's ready to accept
     # connections
     trap : USR1
-    (trap '' USR1; exec Xvfb ":$SERVERNUM" $XVFBARGS $LISTENTCP -auth $AUTHFILE >>"$ERRORFILE" 2>&1) &
+    (trap '' USR1; exec Xvfb ":$SERVERNUM" $XVFBARGS $LISTENTCP -auth $AUTHFILE >&3 2>&3 3>&-) &
     XVFBPID=$!
 
     wait || :
@@ -181,7 +197,7 @@ done
 
 # Start the command and save its exit status.
 set +e
-DISPLAY=:$SERVERNUM XAUTHORITY=$AUTHFILE "$@"
+DISPLAY=:$SERVERNUM XAUTHORITY=$AUTHFILE "$@" 3>&-
 RETVAL=$?
 set -e
 

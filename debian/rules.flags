@@ -59,7 +59,7 @@ confflags_main = \
 	--enable-xnest \
 	--enable-kdrive \
 	--enable-xephyr \
-	--with-sha1=libgcrypt \
+	--with-sha1=libnettle \
 	--enable-xcsecurity \
 	$(void)
 
@@ -89,7 +89,7 @@ confflags_udeb = \
 	--disable-xnest \
 	--disable-kdrive \
 	--disable-xephyr \
-	--with-sha1=libnettle \
+	--with-sha1=nettlestatic \
 	$(void)
 
 ifeq ($(DEB_HOST_ARCH_OS), linux)
@@ -128,7 +128,7 @@ else # hurd
 endif
 
 # some archs don't have libunwind
-ifneq (,$(filter $(DEB_HOST_ARCH), amd64 arm64 armel armhf hppa i386 ia64 mips64 mips64el mipsel powerpc powerpcspe ppc64 ppc64el sh4))
+ifneq (,$(filter $(DEB_HOST_ARCH), amd64 arm64 armel hppa i386 ia64 mips64 mips64el mipsel powerpc powerpcspe ppc64 ppc64el sh4))
 	confflags_main += --enable-libunwind
 else
 	confflags_main += --disable-libunwind

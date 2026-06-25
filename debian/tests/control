@@ -1,0 +1,9 @@
+Tests:
+ xvfb-run,
+Depends:
+ x11-utils,
+ xauth,
+ xvfb,
+Restrictions:
+ allow-stderr,
+ superficial,

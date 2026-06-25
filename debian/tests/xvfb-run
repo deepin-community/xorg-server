@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+
+xvfb-run -a -e /proc/self/fd/2 -s "-noreset" xdpyinfo
