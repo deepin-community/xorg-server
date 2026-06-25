@@ -1,0 +1,49 @@
+From 1348de98ecb645fef0ee78e5dccc21faf352e838 Mon Sep 17 00:00:00 2001
+From: Shin <shining@uniontech.com>
+Date: Tue, 28 Apr 2026 16:19:21 +0800
+Subject: [PATCH] fix(randr): use full transform for CRTC bounds checking
+
+Replace manual 90/270 rotation swap with pixman_f_transform_bounds
+to validate screen size against all CRTC transforms.
+
+使用pixman_f_transform_bounds替换手动旋转交换，正确验证所有CRTC变换下的屏幕尺寸。
+
+Log: 使用完整变换矩阵检查CRTC边界
+PMS: BUG-276065
+Influence: 修复旋转或变换场景下屏幕尺寸校验不准确的问题，确保非简单旋转时边界检查正确。
+---
+ randr/rrscreen.c | 19 ++++++++-----------
+ 1 file changed, 8 insertions(+), 11 deletions(-)
+
+diff --git a/randr/rrscreen.c b/randr/rrscreen.c
+index 58b5299..42f7a75 100644
+--- a/randr/rrscreen.c
++++ b/randr/rrscreen.c
+@@ -268,17 +268,14 @@ ProcRRSetScreenSize(ClientPtr client)
+         RRModePtr mode = crtc->mode;
+
+         if (!RRCrtcIsLeased(crtc) && mode) {
+-            int source_width = mode->mode.width;
+-            int source_height = mode->mode.height;
+-            Rotation rotation = crtc->rotation;
+-
+-            if (rotation & (RR_Rotate_90 | RR_Rotate_270)) {
+-                source_width = mode->mode.height;
+-                source_height = mode->mode.width;
+-            }
+-
+-            if (crtc->x + source_width > stuff->width ||
+-                crtc->y + source_height > stuff->height)
++            struct pixman_box16 display_box = {
++                crtc->x, crtc->y,
++                crtc->x + mode->mode.width,
++                crtc->y + mode->mode.height
++            };
++            pixman_f_transform_bounds(&crtc->f_transform, &display_box);
++
++            if (display_box.x2 > stuff->width || display_box.y2 > stuff->height)
+                 return BadMatch;
+         }
+     }
+--
+2.50.1
