@@ -1,54 +1,21 @@
-xorg-server (2:21.1.16-1.3+deb13u2) trixie; urgency=medium
+xorg-server (2:21.1.16-1deepin1) unstable; urgency=medium
 
-  * Non-maintainer upload.
-  * xkb: fix buffer re-use in _XkbSetCompatMap (CVE-2026-33999)
-  * xkb: Fix bounds check in _CheckSetGeom() (CVE-2026-34000)
-  * miext/sync: Fix use-after-free in miSyncTriggerFence() (CVE-2026-34001)
-  * xkb: Fix out-of-bounds read in CheckModifierMap() (CVE-2026-34002)
-  * xkb: Add additional bound checking in CheckKeyTypes() (CVE-2026-34003)
-  * xkb: Add more _XkbCheckRequestBounds() (CVE-2026-34003)
+  * Restore deepin patches on top of 21.1.16-1.3+deb13u2:
+    - Add device ID support
+    - Xrecord: add touch support
+    - Resolve Xorg crashing with DisplayLink unplugging
+    - hw/xfree86: workaround bad firmware boot VGA reporting
+    - Add zx KX600G device ID
+    - Add Glenfly Arise PCI IDs
+    - config: Preserve section data when parsing duplicate files
+    - feat: implement screenshot protection for secure windows
+    - Backport GLES support (glamor-gles)
+    - bugfix: revert render Break PICT_a4
+    - fix randr: use full transform for CRTC bounds checking
+    - fix randr: use mode-space coordinates for CRTC bounds checking
+    - fix multi-screen pointer primary
 
- -- Salvatore Bonaccorso <carnil@debian.org>  Sat, 11 Apr 2026 02:36:53 +0200
-
-xorg-server (2:21.1.16-1.3+deb13u1) trixie-security; urgency=high
-
-  * Non-maintainer upload by the Security Team.
-  * present: Fix use-after-free in present_create_notifies() (CVE-2025-62229)
-  * xkb: Make the RT_XKBCLIENT resource private (CVE-2025-62230)
-  * xkb: Free the XKB resource when freeing XkbInterest (CVE-2025-62230)
-  * xkb: Prevent overflow in XkbSetCompatMap() (CVE-2025-62231)
-
- -- Salvatore Bonaccorso <carnil@debian.org>  Mon, 27 Oct 2025 18:03:26 +0100
-
-xorg-server (2:21.1.16-1.3) unstable; urgency=medium
-
-  * Non-maintainer upload.
-  * os: Check for integer overflow on BigRequest length (CVE-2025-49176)
-    (Closes: #1108073)
-
- -- Salvatore Bonaccorso <carnil@debian.org>  Fri, 20 Jun 2025 09:47:20 +0200
-
-xorg-server (2:21.1.16-1.2) unstable; urgency=medium
-
-  * Non-maintainer upload.
-  * render: Avoid 0 or less animated cursors (CVE-2025-49175)
-  * os: Do not overflow the integer size with BigRequest (CVE-2025-49176)
-  * xfixes: Check request length for SetClientDisconnectMode (CVE-2025-49177)
-  * os: Account for bytes to ignore when sharing input buffer (CVE-2025-49178)
-  * record: Check for overflow in RecordSanityCheckRegisterClients()
-    (CVE-2025-49179)
-  * randr: Check for overflow in RRChangeProviderProperty() (CVE-2025-49180)
-  * xfree86: Check for RandR provider functions (CVE-2025-49180)
-
- -- Salvatore Bonaccorso <carnil@debian.org>  Thu, 12 Jun 2025 21:03:24 +0200
-
-xorg-server (2:21.1.16-1.1) unstable; urgency=medium
-
-  * Non-maintainer upload.
-  * dix: Hold input lock for AttachDevice() (CVE-2022-49737)
-    (Closes: #1081338)
-
- -- Salvatore Bonaccorso <carnil@debian.org>  Fri, 02 May 2025 15:04:19 +0200
+ -- lichenggang <lichenggang@uniontech.com>  Wed, 25 Jun 2026 10:00:00 +0800
 
 xorg-server (2:21.1.16-1) unstable; urgency=medium
 

@@ -1,0 +1,37 @@
+From 25fe9ae7c846181d58deab65149a86fda024dee4 Mon Sep 17 00:00:00 2001
+From: niecheng <niecheng1@uniontech.com>
+Date: Wed, 24 Dec 2025 11:50:50 +0800
+Subject: [PATCH] bugfix: revert  "render: Break PICT_a4"
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Upstream commit 436fd7e8 removed support for the PICT_a4 format, causing "x11perf  -aa4trap300" test cases to fail. Revert this commit to improve backward compatibility.
+
+https://gitlab.freedesktop.org/xorg/xserver/-/commit/436fd7e8b4966c305ea9c43f3c14c2ca04c35539
+
+Log: 修复v25 unixbench2d子项失败问题
+PMS: BUG-311421
+Influence: 影响V25 unixbench2d跑分
+---
+ render/picture.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/render/picture.c b/render/picture.c
+index 2be4b19..3fa48f9 100644
+--- a/render/picture.c
++++ b/render/picture.c
+@@ -188,6 +188,10 @@ PictureCreateDefaultFormats(ScreenPtr pScreen, int *nformatp)
+                                            PICT_TYPE_A, 8, 0, 0, 0);
+     formats[nformats].depth = 8;
+     nformats++;
++    formats[nformats].format = PICT_FORMAT(BitsPerPixel(4),
++                                           PICT_TYPE_A, 4, 0, 0, 0);
++    formats[nformats].depth = 4;
++    nformats++;
+     formats[nformats].format = PICT_a8r8g8b8;
+     formats[nformats].depth = 32;
+     nformats++;
+-- 
+2.50.1
+
