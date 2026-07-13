@@ -1,0 +1,61 @@
+From: lichenggang <lichenggang@uniontech.com>
+Date: Mon, 13 Jul 2026 16:00:00 +0800
+Subject: fix: add missing GBM library linkage to modesetting driver
+
+modesetting_drv.so references gbm_bo_get_plane_count and other GBM
+symbols but the Makefile.am does not include $(GBM_LIBS) in LIBADD
+and $(GBM_CFLAGS) in AM_CFLAGS, causing undefined symbol errors at
+runtime when glamor is not loaded first.
+
+Signed-off-by: lichenggang <lichenggang@uniontech.com>
+---
+ hw/xfree86/drivers/modesetting/Makefile.am | 4 ++--
+ hw/xfree86/drivers/modesetting/Makefile.in | 4 ++--
+ 2 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/hw/xfree86/drivers/modesetting/Makefile.am b/hw/xfree86/drivers/modesetting/Makefile.am
+index 961c574..ce8a1d9 100644
+--- a/hw/xfree86/drivers/modesetting/Makefile.am
++++ b/hw/xfree86/drivers/modesetting/Makefile.am
+@@ -26,7 +26,7 @@
+
+ include $(top_srcdir)/manpages.am
+
+-AM_CFLAGS = $(DIX_CFLAGS) $(XORG_CFLAGS) $(LIBDRM_CFLAGS) $(UDEV_CFLAGS) $(CWARNFLAGS)
++AM_CFLAGS = $(DIX_CFLAGS) $(XORG_CFLAGS) $(LIBDRM_CFLAGS) $(UDEV_CFLAGS) $(GBM_CFLAGS) $(CWARNFLAGS)
+
+ AM_CPPFLAGS = \
+ 	$(XORG_INCS) \
+@@ -41,7 +41,7 @@ AM_CPPFLAGS = \
+
+ modesetting_drv_la_LTLIBRARIES = modesetting_drv.la
+ modesetting_drv_la_LDFLAGS = -module -avoid-version
+-modesetting_drv_la_LIBADD = $(UDEV_LIBS) $(DRM_LIBS)
++modesetting_drv_la_LIBADD = $(UDEV_LIBS) $(DRM_LIBS) $(GBM_LIBS)
+ modesetting_drv_ladir = @moduledir@/drivers
+
+ modesetting_drv_la_SOURCES = \
+diff --git a/hw/xfree86/drivers/modesetting/Makefile.in b/hw/xfree86/drivers/modesetting/Makefile.in
+index a410448..db85dfd 100644
+--- a/hw/xfree86/drivers/modesetting/Makefile.in
++++ b/hw/xfree86/drivers/modesetting/Makefile.in
+@@ -619,7 +619,7 @@ fileman_DATA = $(fileman_PRE:man=$(FILE_MAN_SUFFIX))
+ EXTRA_DIST = modesetting.man
+ CLEANFILES = $(driverman_DATA)
+ SUFFIXES = .$(APP_MAN_SUFFIX) .$(DRIVER_MAN_SUFFIX) .$(FILE_MAN_SUFFIX) .man
+-AM_CFLAGS = $(DIX_CFLAGS) $(XORG_CFLAGS) $(LIBDRM_CFLAGS) $(UDEV_CFLAGS) $(CWARNFLAGS)
++AM_CFLAGS = $(DIX_CFLAGS) $(XORG_CFLAGS) $(LIBDRM_CFLAGS) $(UDEV_CFLAGS) $(GBM_CFLAGS) $(CWARNFLAGS)
+ AM_CPPFLAGS = \
+ 	$(XORG_INCS) \
+ 	-I$(top_srcdir)/glamor \
+@@ -633,7 +633,7 @@ AM_CPPFLAGS = \
+
+ modesetting_drv_la_LTLIBRARIES = modesetting_drv.la
+ modesetting_drv_la_LDFLAGS = -module -avoid-version
+-modesetting_drv_la_LIBADD = $(UDEV_LIBS) $(DRM_LIBS)
++modesetting_drv_la_LIBADD = $(UDEV_LIBS) $(DRM_LIBS) $(GBM_LIBS)
+ modesetting_drv_ladir = @moduledir@/drivers
+ modesetting_drv_la_SOURCES = \
+ 	 dri2.c \
+--
+2.43.0
