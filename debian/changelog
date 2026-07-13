@@ -1,3 +1,13 @@
+xorg-server (2:21.1.16-1deepin2) unstable; urgency=medium
+
+  * fix: add missing GBM library linkage to modesetting driver
+    - Add $(GBM_CFLAGS) to AM_CFLAGS for gbm.h header path
+    - Add $(GBM_LIBS) to modesetting_drv_la_LIBADD for DT_NEEDED
+    - Fixes "undefined symbol: gbm_bo_get_plane_count" at runtime
+    - Only affects autotools build (meson build was correct)
+
+ -- lichenggang <lichenggang@uniontech.com>  Mon, 13 Jul 2026 13:15:00 +0800
+
 xorg-server (2:21.1.16-1deepin1) unstable; urgency=medium
 
   * Restore deepin patches on top of 21.1.16-1.3+deb13u2:
