@@ -1,3 +1,9 @@
+xorg-server (2:21.1.16-1deepin3) unstable; urgency=medium
+
+  * fix(cve): CVE-2026-50262
+
+ -- deepin-ci-robot <packages@deepin.org>  Fri, 17 Jul 2026 15:30:06 +0800
+
 xorg-server (2:21.1.16-1deepin2) unstable; urgency=medium
 
   * fix: add missing GBM library linkage to modesetting driver
