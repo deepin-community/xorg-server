@@ -26,3 +26,4 @@ glamor-gles/1005-glamor-Fix-dual-blend-on-GLES3.patch
 fix-modesetting-gbm-linkage.patch
 CVE-2026-50262.patch
 CVE-2026-50263.patch
+CVE-2026-56000.patch
