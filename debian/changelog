@@ -1,3 +1,9 @@
+xorg-server (2:21.1.16-1deepin6) unstable; urgency=medium
+
+  * fix(cve): CVE-2026-55999
+
+ -- deepin-ci-robot <packages@deepin.org>  Thu, 06 Aug 2026 04:30:47 +0800
+
 xorg-server (2:21.1.16-1deepin5) unstable; urgency=medium
 
   * fix(cve): CVE-2026-56000
