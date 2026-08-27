@@ -1,0 +1,97 @@
+Description: fix: update composite backing pixmap on window move before first client frame
+ During the window-map-to-first-client-frame window, the composite backing
+ pixmap holds a stale snapshot of the position where the window was mapped
+ (typically the top-left of the screen). For override-redirect windows (Qt
+ popups, menus) the compositor can bind this stale content as texture before
+ the client paints, causing wrong background display after the window is moved.
+ Track whether the client has painted (backingNotPainted) and, while it has
+ not, re-copy the content under the window's new position into the backing
+ whenever the window moves.
+Author: UnionTech <support@uniontech.com>
+Forwarded: not-needed
+Last-Update: 2026-08-26
+---
+diff --git a/composite/compalloc.c b/composite/compalloc.c
+index 0d4af9e..456d6ce 100644
+--- a/composite/compalloc.c
++++ b/composite/compalloc.c
+@@ -618,6 +618,7 @@ compAllocPixmap(WindowPtr pWin)
+         pWin->redirectDraw = RedirectDrawManual;
+ 
+     compSetPixmap(pWin, pPixmap, bw);
++    cw->backingNotPainted = TRUE;
+     cw->oldx = COMP_ORIGIN_INVALID;
+     cw->oldy = COMP_ORIGIN_INVALID;
+     cw->damageRegistered = FALSE;
+diff --git a/composite/compint.h b/composite/compint.h
+index 423b641..46429a9 100644
+--- a/composite/compint.h
++++ b/composite/compint.h
+@@ -97,6 +97,7 @@ typedef struct _CompWindow {
+     int oldy;
+     PixmapPtr pOldPixmap;
+     int borderClipX, borderClipY;
++    Bool backingNotPainted;
+ } CompWindowRec, *CompWindowPtr;
+ 
+ #define COMP_ORIGIN_INVALID	    0x80000000
+diff --git a/composite/compwindow.c b/composite/compwindow.c
+index 9a65163..2df0558 100644
+--- a/composite/compwindow.c
++++ b/composite/compwindow.c
+@@ -175,6 +175,8 @@ compCheckRedirect(WindowPtr pWin)
+         else {
+             ScreenPtr pScreen = pWin->drawable.pScreen;
+             PixmapPtr pPixmap = (*pScreen->GetWindowPixmap) (pWin);
++        if (pWin->overrideRedirect)
++            cw->backingNotPainted = FALSE;
+ 
+             compSetParentPixmap(pWin);
+             compRestoreWindow(pWin, pPixmap);
+@@ -227,6 +229,7 @@ compPositionWindow(WindowPtr pWin, int x, int y)
+ {
+     ScreenPtr pScreen = pWin->drawable.pScreen;
+     CompScreenPtr cs = GetCompScreen(pScreen);
++    CompWindowPtr cw = GetCompWindow(pWin);
+     Bool ret = TRUE;
+ 
+     pScreen->PositionWindow = cs->PositionWindow;
+@@ -388,17 +391,38 @@ compFreeOldPixmap(WindowPtr pWin)
+     }
+ }
+ 
++
+ void
+ compMoveWindow(WindowPtr pWin, int x, int y, WindowPtr pSib, VTKind kind)
+ {
+     ScreenPtr pScreen = pWin->drawable.pScreen;
+     CompScreenPtr cs = GetCompScreen(pScreen);
++    CompWindowPtr cw = GetCompWindow(pWin);
+ 
+     pScreen->MoveWindow = cs->MoveWindow;
+     (*pScreen->MoveWindow) (pWin, x, y, pSib, kind);
+     cs->MoveWindow = pScreen->MoveWindow;
+     pScreen->MoveWindow = compMoveWindow;
+ 
++    if (pWin->overrideRedirect && cw && cw->backingNotPainted) {
++        PixmapPtr pPixmap = (*pScreen->GetWindowPixmap) (pWin);
++        GCPtr pGC;
++        WindowPtr pParent;
++
++        if (pPixmap && (pParent = pWin->parent) && (pGC = GetScratchGC(pWin->drawable.depth, pScreen))) {
++            pGC->subWindowMode = IncludeInferiors;
++            ValidateGC(&pPixmap->drawable, pGC);
++            (*pGC->ops->CopyArea) (&pParent->drawable,
++                                   &pPixmap->drawable,
++                                   pGC,
++                                   pWin->drawable.x - pWin->borderWidth - pParent->drawable.x,
++                                   pWin->drawable.y - pWin->borderWidth - pParent->drawable.y,
++                                   pWin->drawable.width + 2 * pWin->borderWidth,
++                                   pWin->drawable.height + 2 * pWin->borderWidth,
++                                   0, 0);
++            FreeScratchGC(pGC);
++        }
++    }
+     compFreeOldPixmap(pWin);
+     compCheckTree(pScreen);
+ }
