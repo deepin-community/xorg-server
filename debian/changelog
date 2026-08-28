@@ -1,3 +1,9 @@
+xorg-server (2:21.1.16-1deepin7) unstable; urgency=medium
+
+  * fix(composite): update backing pixmap on override-redirect window move
+
+ -- shining <shining@uniontech.com>  Fri, 28 Aug 2026 10:20:39 +0800
+
 xorg-server (2:21.1.16-1deepin6) unstable; urgency=medium
 
   * fix(cve): CVE-2026-55999
