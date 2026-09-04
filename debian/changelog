@@ -1,3 +1,9 @@
+xorg-server (2:21.1.16-1deepin8) unstable; urgency=medium
+
+  * fix(composite): gate backing pixmap until client first real frame
+
+ -- shining <shining@uniontech.com>  Thu, 04 Sep 2026 11:20:00 +0800
+
 xorg-server (2:21.1.16-1deepin7) unstable; urgency=medium
 
   * fix(composite): update backing pixmap on override-redirect window move
