@@ -1,3 +1,9 @@
+xorg-server (2:21.1.16-1deepin9) unstable; urgency=medium
+
+  * fix: modesetting: Do not rotate damage clips in the shared pixmap path
+
+ -- zhanghaotian <zhanghaotian@uniontech.com>  Thu, 10 Sep 2026 19:56:15 +0800
+
 xorg-server (2:21.1.16-1deepin8) unstable; urgency=medium
 
   * fix(composite): gate backing pixmap until client first real frame
