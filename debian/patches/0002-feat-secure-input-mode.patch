@@ -1,0 +1,249 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Multica Coder <coder@multica.local>
+Date: Tue, 19 Aug 2026 18:30:00 +0800
+Subject: [PATCH] feat: add secure-input mode to reject synthetic input injection
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+1. Add a secure-input window list (secureWindowList/secureWindowCount)
+   with exported SetSecureInputWindow()/RemoveSecureInputWindow()/
+   IsSecureInputMode() APIs in dix, mirroring the existing
+   protectedWindowList pattern.  IsSecureInputMode() returns TRUE while
+   the list is non-empty, giving natural reference-counting for multiple
+   secure windows.
+2. Declare the new APIs in include/window.h (the installed SDK header),
+   alongside SetProtectedWindow, so external modules (displayjack UACE)
+   can reach them via <xorg/window.h>.
+3. Auto-cleanup: hook FreeWindowResources (dix/window.c) to call
+   RemoveSecureInputWindow() so the mode can never get stuck on if the
+   client (e.g. polkit) dies without explicitly clearing it.
+4. Reject synthetic/injected input with BadAccess while secure-input
+   mode is active at four injection points:
+   - ProcXTestFakeInput (core + XI branches)
+   - ProcXSendExtensionEvent
+   - ProcSendEvent (only input-class event types: KeyPress/KeyRelease/
+     ButtonPress/ButtonRelease/MotionNotify -- WM protocol messages,
+     ClientMessage, etc. are left unaffected)
+   - ProcWarpPointer (programmatic cursor warps)
+
+Log: Added secure-input mode to reject synthetic input injection
+
+Influence:
+1. Test toggling secure-input mode via the UACE extension request
+2. Verify XTEST fake input is rejected with BadAccess while active
+3. Verify XSendExtensionEvent/SendEvent(input types)/XWarpPointer are
+   rejected while active, while non-input SendEvent still works
+4. Verify real hardware input is unaffected
+5. Verify the mode auto-clears when a secure window is destroyed
+
+feat: 新增安全输入模式，拒绝模拟输入注入
+
+1. 在 dix 中新增安全输入窗口列表（secureWindowList/secureWindowCount）
+   及导出 API SetSecureInputWindow()/RemoveSecureInputWindow()/
+   IsSecureInputMode()，参照既有 protectedWindowList 模式。
+   IsSecureInputMode() 在列表非空时返回 TRUE，天然支持多窗口引用计数。
+2. 在 include/window.h（已安装 SDK 头）声明新 API，与
+   SetProtectedWindow 并列，外部模块经 <xorg/window.h> 即可引用。
+3. 自清理：在 FreeWindowResources（dix/window.c）中 hook
+   RemoveSecureInputWindow()，客户端（如 polkit）崩溃未显式清除时
+   安全输入模式不会卡死。
+4. 安全输入模式开启时，四处注入点返回 BadAccess：
+   - ProcXTestFakeInput（核心 + XI 分支）
+   - ProcXSendExtensionEvent
+   - ProcSendEvent（仅输入类事件：KeyPress/KeyRelease/ButtonPress/
+     ButtonRelease/MotionNotify；WM 协议消息、ClientMessage 等不受影响）
+   - ProcWarpPointer（程序化光标移动）
+
+Log: 新增安全输入模式，拒绝模拟输入注入
+
+Influence:
+1. 测试通过 UACE 扩展请求切换安全输入模式
+2. 验证开启时 XTEST 模拟输入被以 BadAccess 拒绝
+3. 验证开启时 XSendExtensionEvent/SendEvent(输入类)/XWarpPointer 被拒绝，
+   非输入类 SendEvent 仍正常
+4. 验证真实硬件输入不受影响
+5. 验证安全窗口销毁后模式自动清除
+
+---
+ Xext/xtest.c     |  7 +++++++
+ Xi/sendexev.c    |  5 +++++
+ dix/dispatch.c   | 50 ++++++++++++++++++++++++++++++++++++++++++++++++++
+ dix/events.c     | 16 ++++++++++++++++
+ dix/window.c     |  4 ++++
+ include/window.h |  6 ++++++
+ 6 files changed, 88 insertions(+)
+
+Index: xorg-server/Xext/xtest.c
+===================================================================
+--- xorg-server.orig/Xext/xtest.c
++++ xorg-server/Xext/xtest.c
+@@ -56,6 +56,7 @@
+ #include "inpututils.h"
+ 
+ #include "extinit.h"
++#include "../include/window.h"  /* IsSecureInputMode() */
+ 
+ /* XTest events are sent during request processing and may be interrupted by
+  * a SIGIO. We need a separate event list to avoid events overwriting each
+@@ -175,6 +176,12 @@ ProcXTestFakeInput(ClientPtr client)
+     ev = (xEvent *) &((xReq *) stuff)[1];
+     type = ev->u.u.type & 0177;
+ 
++    /* Reject all synthetic/injected input while secure-input mode is
++     * active (e.g. during polkit authentication).  This guards both the
++     * core (KeyPress/ButtonPress/Motion) and the XI extension branches. */
++    if (IsSecureInputMode())
++        return BadAccess;
++
+     if (type >= EXTENSION_EVENT_BASE) {
+         extension = TRUE;
+ 
+Index: xorg-server/Xi/sendexev.c
+===================================================================
+--- xorg-server.orig/Xi/sendexev.c
++++ xorg-server/Xi/sendexev.c
+@@ -64,6 +64,7 @@ SOFTWARE.
+ 
+ #include "grabdev.h"
+ #include "sendexev.h"
++#include "../include/window.h"  /* IsSecureInputMode() */
+ 
+ extern int lastEvent;           /* Defined in extension.c */
+ 
+@@ -143,6 +144,10 @@ ProcXSendExtensionEvent(ClientPtr client)
+     if (ret != Success)
+         return ret;
+ 
++    /* Reject injected extension events while secure-input mode is active. */
++    if (IsSecureInputMode())
++        return BadAccess;
++
+     if (stuff->num_events == 0)
+         return ret;
+ 
+Index: xorg-server/dix/dispatch.c
+===================================================================
+--- xorg-server.orig/dix/dispatch.c
++++ xorg-server/dix/dispatch.c
+@@ -147,6 +147,56 @@ int ProcInitialConnection();
+ int protectedWindowCount = 0;
+ Window *protectedWindowList = NULL;
+ 
++/* Secure-input window list: when non-empty, all synthetic/injected
++ * input (XTEST fake input, XSendExtensionEvent, SendEvent of input
++ * events, XWarpPointer) is rejected with BadAccess.  Mirrors the
++ * protectedWindowList pattern.  Windows are removed automatically in
++ * FreeWindowResources so the mode can never get stuck on. */
++int secureWindowCount = 0;
++Window *secureWindowList = NULL;
++
++void
++SetSecureInputWindow(Window window)
++{
++    if (secureWindowCount >= MAXCLIENTS)
++        return;
++
++    for (int i = 0; i < secureWindowCount; i++) {
++        if (window == secureWindowList[i]) {
++            return;
++        }
++    }
++
++    int n = secureWindowCount;
++    if (secureWindowList == NULL) {
++        assert(n == 0);
++        secureWindowList = malloc(MAXCLIENTS * sizeof(Window));
++    }
++    secureWindowList[n] = window;
++    secureWindowCount++;
++}
++
++void
++RemoveSecureInputWindow(Window window)
++{
++    for (int i = 0; i < secureWindowCount; i++) {
++        if (secureWindowList[i] == window) {
++            for (int j = i; j < secureWindowCount; j++) {
++                secureWindowList[j] = secureWindowList[j + 1];
++            }
++            secureWindowList[secureWindowCount - 1] = 0;
++            secureWindowCount--;
++            return;
++        }
++    }
++}
++
++Bool
++IsSecureInputMode(void)
++{
++    return secureWindowCount > 0;
++}
++
+ xConnSetupPrefix connSetupPrefix;
+ 
+ PaddingInfo PixmapWidthPaddingInfo[33];
+Index: xorg-server/dix/events.c
+===================================================================
+--- xorg-server.orig/dix/events.c
++++ xorg-server/dix/events.c
+@@ -3675,6 +3675,11 @@ ProcWarpPointer(ClientPtr client)
+     REQUEST(xWarpPointerReq);
+     REQUEST_SIZE_MATCH(xWarpPointerReq);
+ 
++    /* Reject programmatic pointer warps while secure-input mode is
++     * active; moving the cursor programmatically is synthetic input. */
++    if (IsSecureInputMode())
++        return BadAccess;
++
+     dev = PickPointer(client);
+ 
+     for (tmp = inputInfo.devices; tmp; tmp = tmp->next) {
+@@ -5582,6 +5587,17 @@ ProcSendEvent(ClientPtr client)
+         client->errorValue = stuff->propagate;
+         return BadValue;
+     }
++    /* Reject client-injected SendEvent of input-class events while
++     * secure-input mode is active; leave other event types (WM protocol
++     * messages, ClientMessage, Selection*, Expose, etc.) unaffected so
++     * normal WM/client communication still works. */
++    if (IsSecureInputMode()) {
++        int evtype = stuff->event.u.u.type;
++        if (evtype == KeyPress || evtype == KeyRelease ||
++            evtype == ButtonPress || evtype == ButtonRelease ||
++            evtype == MotionNotify)
++            return BadAccess;
++    }
+     stuff->event.u.u.type |= SEND_EVENT_BIT;
+     if (stuff->propagate) {
+         for (; pWin; pWin = pWin->parent) {
+Index: xorg-server/dix/window.c
+===================================================================
+--- xorg-server.orig/dix/window.c
++++ xorg-server/dix/window.c
+@@ -1028,6 +1028,10 @@ FreeWindowResources(WindowPtr pWin)
+         (*pScreen->DestroyPixmap) (pWin->background.pixmap);
+ 
+     DeleteAllWindowProperties(pWin);
++    /* Auto-remove from the secure-input window list so the mode can
++     * never get stuck on if the client (e.g. polkit) dies without
++     * explicitly clearing it. */
++    RemoveSecureInputWindow(pWin->drawable.id);
+     /* We SHOULD check for an error value here XXX */
+     (*pScreen->DestroyWindow) (pWin);
+     DisposeWindowOptional(pWin);
+Index: xorg-server/include/window.h
+===================================================================
+--- xorg-server.orig/include/window.h
++++ xorg-server/include/window.h
+@@ -236,4 +236,10 @@ extern _X_EXPORT VisualPtr WindowGetVisual(WindowPtr /*pWin*/);
+ extern _X_EXPORT void SetProtectedWindow(Window window);
+ extern _X_EXPORT void RemoveProtectedWindow(Window window);
+ 
++/* Secure-input mode: maintained as a per-window list.  When the list is
++ * non-empty, synthetic/injected input is rejected with BadAccess. */
++extern _X_EXPORT void SetSecureInputWindow(Window window);
++extern _X_EXPORT void RemoveSecureInputWindow(Window window);
++extern _X_EXPORT Bool IsSecureInputMode(void);
++
+ #endif                          /* WINDOW_H */
