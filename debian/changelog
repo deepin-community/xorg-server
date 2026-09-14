@@ -1,3 +1,9 @@
+xorg-server (2:21.1.16-1deepin10) unstable; urgency=medium
+
+  * Rebuild with LTO enabled (dpkg vendor feature optimize/lto).
+
+ -- tunaichao <tunaichao@uniontech.com>  Mon, 14 Sep 2026 09:22:13 +0800
+
 xorg-server (2:21.1.16-1deepin9) unstable; urgency=medium
 
   * fix: modesetting: Do not rotate damage clips in the shared pixmap path
