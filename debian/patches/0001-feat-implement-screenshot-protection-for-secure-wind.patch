@@ -98,7 +98,15 @@ Index: xorg-server/dix/dispatch.c
 ===================================================================
 --- xorg-server.orig/dix/dispatch.c
 +++ xorg-server/dix/dispatch.c
-@@ -129,6 +129,7 @@ int ProcInitialConnection();
+@@ -106,6 +106,7 @@ Equipment Corporation.
+ int ProcInitialConnection();
+ #endif
+ 
++#include "list.h"
+ #include "windowstr.h"
+ #include <X11/fonts/fontstruct.h>
+ #include <X11/fonts/libxfont2.h>
+@@ -129,6 +130,7 @@ int ProcInitialConnection();
  #include "xkbsrv.h"
  #include "client.h"
  #include "xfixesint.h"
@@ -106,17 +114,25 @@ Index: xorg-server/dix/dispatch.c
  
  #ifdef XSERVER_DTRACE
  #include "registry.h"
-@@ -143,6 +144,9 @@ int ProcInitialConnection();
+@@ -143,6 +145,17 @@ int ProcInitialConnection();
  #define BITCLEAR(buf, i) MASKWORD(buf, i) &= ~BITMASK(i)
  #define GETBIT(buf, i) (MASKWORD(buf, i) & BITMASK(i))
  
 +int protectedWindowCount = 0;
 +Window *protectedWindowList = NULL;
 +
++/* Cache the geometry of recently deleted windows for XSHM recording */
++typedef struct {
++    struct xorg_list list;
++    Window id;
++    int x, y, width, height;
++} UaceDeletedWindowCacheRec;
++static struct xorg_list uaceDeletedCache = { &uaceDeletedCache, &uaceDeletedCache };
++
  xConnSetupPrefix connSetupPrefix;
  
  PaddingInfo PixmapWidthPaddingInfo[33];
-@@ -150,6 +154,9 @@ PaddingInfo PixmapWidthPaddingInfo[33];
+@@ -150,6 +163,9 @@ PaddingInfo PixmapWidthPaddingInfo[33];
  static ClientPtr grabClient;
  static ClientPtr currentClient; /* Client for the request currently being dispatched */
  
@@ -126,7 +142,7 @@ Index: xorg-server/dix/dispatch.c
  #define GrabNone 0
  #define GrabActive 1
  static int grabState = GrabNone;
-@@ -1789,6 +1796,12 @@ ProcCopyArea(ClientPtr client)
+@@ -1789,6 +1805,12 @@ ProcCopyArea(ClientPtr client)
      pRgn = (*pGC->ops->CopyArea) (pSrc, pDst, pGC, stuff->srcX, stuff->srcY,
                                    stuff->width, stuff->height,
                                    stuff->dstX, stuff->dstY);
@@ -139,7 +155,7 @@ Index: xorg-server/dix/dispatch.c
      if (pGC->graphicsExposures) {
          SendGraphicsExpose(client, pRgn, stuff->dstDrawable, X_CopyArea, 0);
          if (pRgn)
-@@ -2134,6 +2147,354 @@ ProcPutImage(ClientPtr client)
+@@ -2134,6 +2156,481 @@ ProcPutImage(ClientPtr client)
      return Success;
  }
  
@@ -167,6 +183,12 @@ Index: xorg-server/dix/dispatch.c
 +{
 +    for (int i = 0; i < protectedWindowCount; i++) {
 +        if (protectedWindowList[i] == window) {
++            // When protection is removed, the protected area disappears immediately. Cache the window geometry in advance so that XSHM recording can still censor the region using its original geometry for a while after the window is destroyed
++            WindowPtr pWin;
++            if (Success == dixLookupWindow(&pWin, window, serverClient, DixReadAccess)) {
++                UaceCacheWindowGeometry(pWin);
++            }
++
 +            for (int j = i; j < protectedWindowCount; j++) {
 +                protectedWindowList[j] = protectedWindowList[j + 1];
 +            }
@@ -180,10 +202,51 @@ Index: xorg-server/dix/dispatch.c
 +int CreateCensorImage(ClientPtr client,
 +                        GCPtr pGC,
 +                        DrawablePtr pDraw,
-+                        xRectangle pRects,
++                        const BoxRec *imageBox,
++                        xRectangle *rect,
 +                        unsigned int bgPixel,
 +                        unsigned int lockPixel)
 +{
++    /* Intersect with the capture region: skip if entirely outside it; clip to the region when overlapping before drawing */
++    if (rect->x >= imageBox->x2 || rect->y >= imageBox->y2
++        || rect->x + rect->width <= imageBox->x1 || rect->y + rect->height <= imageBox->y1) {
++        LogMessageVerb(X_INFO, 0,
++                       "CreateCensorImage: skip rect [%d,%d %dx%d] outside capture box [%d,%d %dx%d]\n",
++                       rect->x, rect->y, rect->width, rect->height,
++                       imageBox->x1, imageBox->y1,
++                       imageBox->x2 - imageBox->x1, imageBox->y2 - imageBox->y1);
++        return 0;
++    }
++    /* Anchor the lock icon at the absolute midpoint of the whole region computed
++     * BEFORE clipping. A tall screenshot is captured in small horizontal slices
++     * (IMAGE_BUFSIZE chunks), so without this every slice would center its own
++     * truncated icon, producing a vertical stack of nicked lock icons. Anchoring
++     * at the original position makes each slice render only its pixel rows of the
++     * same icon. */
++    int censorMidX = rect->x + rect->width / 2;
++    int censorMidY = rect->y + rect->height / 2.5;
++    if (rect->x < imageBox->x1) {
++        rect->width -= imageBox->x1 - rect->x;
++        rect->x = imageBox->x1;
++    }
++    if (rect->y < imageBox->y1) {
++        rect->height -= imageBox->y1 - rect->y;
++        rect->y = imageBox->y1;
++    }
++    if (rect->x + rect->width > imageBox->x2) {
++        rect->width = imageBox->x2 - rect->x;
++    }
++    if (rect->y + rect->height > imageBox->y2) {
++        rect->height = imageBox->y2 - rect->y;
++    }
++    if (rect->width <= 0 || rect->height <= 0) {
++        return 0;
++    }
++
++    /* Convert to local coordinates (relative to the top-left corner of the capture region) before drawing */
++    rect->x -= imageBox->x1;
++    rect->y -= imageBox->y1;
++
 +    Bool failed = 0;
 +    ChangeGCVal gcvalue[3];
 +
@@ -197,8 +260,8 @@ Index: xorg-server/dix/dispatch.c
 +    int downRectHeight = 64;
 +
 +    xPoint midPoint;
-+    midPoint.x = pRects.x + pRects.width / 2;
-+    midPoint.y = pRects.y + pRects.height / 2.5;
++    midPoint.x = censorMidX - imageBox->x1;
++    midPoint.y = censorMidY - imageBox->y1;
 +
 +    DDXPointPtr pointsBg = NULL;
 +    pointsBg = malloc(2 * sizeof(xPoint));
@@ -207,14 +270,14 @@ Index: xorg-server/dix/dispatch.c
 +        goto failsafe;
 +    }
 +
-+    pointsBg[0].x = pRects.x;
-+    pointsBg[0].y = pRects.y + pRects.height / 2;
++    pointsBg[0].x = rect->x;
++    pointsBg[0].y = rect->y + rect->height / 2;
 +
-+    pointsBg[1].x = pRects.x + pRects.width;
-+    pointsBg[1].y = pRects.y + pRects.height / 2;
++    pointsBg[1].x = rect->x + rect->width;
++    pointsBg[1].y = rect->y + rect->height / 2;
 +
 +    gcvalue[0].val = bgPixel;
-+    gcvalue[1].val = pRects.height;
++    gcvalue[1].val = rect->height;
 +
 +    ChangeGC(client, pGC, GCForeground | GCLineWidth, gcvalue);
 +    ValidateGC(pDraw, pGC);
@@ -436,6 +499,18 @@ Index: xorg-server/dix/dispatch.c
 +    imageBox.y2 = pSrc->y + y + h;
 +    RegionInit(&imageRegion, &imageBox, 1);
 +    GCPtr pScratchGC = GetScratchGC(pSrc->depth, pSrc->pScreen);
++
++    // The main loop cannot reach windows that have been unprotected or destroyed; always censor against the cached geometry
++    UaceDeletedWindowCacheRec *cache;
++    xorg_list_for_each_entry(cache, &uaceDeletedCache, list) {
++        xRectangle protectedRect;
++        protectedRect.x = cache->x;
++        protectedRect.y = cache->y;
++        protectedRect.width = cache->width;
++        protectedRect.height = cache->height;
++        CreateCensorImage(client, pScratchGC, pDst, &imageBox, &protectedRect, bgPixel, lockPixel);
++    }
++
 +    for (int i = 0; i < protectedWindowCount; i++) {
 +        if (protectedWindowList[i]) {
 +            WindowPtr pWindow;
@@ -451,17 +526,85 @@ Index: xorg-server/dix/dispatch.c
 +            // When the source is the protected window itself or the root window, intercept
 +            if (pClient && (pClient == sClient || xorgPid == sClient->clientIds->pid) && need) {
 +                xRectangle pRects;
-+                pRects.x = pWindow->drawable.x - imageBox.x1;
-+                pRects.y = pWindow->drawable.y - imageBox.y1;
++                pRects.x = pWindow->drawable.x;
++                pRects.y = pWindow->drawable.y;
 +                pRects.width = pWindow->drawable.width;
 +                pRects.height = pWindow->drawable.height;
 +                CreateCensorImage(client,
-+                    pScratchGC, pDst, pRects, bgPixel, lockPixel);
++                    pScratchGC, pDst, &imageBox, &pRects, bgPixel, lockPixel);
 +            }
 +        }
 +    }
 +    RegionUninit(&imageRegion);
 +    FreeScratchGC(pScratchGC);
++}
++
++/* Check whether the window is protected */
++Bool UaceIsProtectedWindow(WindowPtr pWin)
++{
++    if (!pWin) {
++        return FALSE;
++    }
++
++    for (int i = 0; i < protectedWindowCount; i++) {
++        if (protectedWindowList[i] == pWin->drawable.id) {
++            return TRUE;
++        }
++    }
++
++    return FALSE;
++}
++
++/* Timer callback: clean up the cache */
++static OsTimerPtr uaceProtectedRegionTimer = NULL;
++static CARD32 UaceProtectedRegionEraseTimerCb(OsTimerPtr timer, CARD32 now, void *arg)
++{
++    UaceDeletedWindowCacheRec *item, *tmp;
++    xorg_list_for_each_entry_safe(item, tmp, &uaceDeletedCache, list) {
++        xorg_list_del(&item->list);
++        free(item);
++    }
++
++    uaceProtectedRegionTimer = NULL;
++    TimerFree(timer);
++    return 0;
++}
++
++/* Cache the window geometry and start a timer to clean it up, so that XSHM can censor using the original geometry when the window is destroyed or hidden and can no longer be looked up */
++void UaceCacheWindowGeometry(WindowPtr pWin)
++{
++    if (!pWin || !pWin->drawable.pScreen) {
++        return;
++    }
++
++    /* Deduplicate: found indicates the window already exists in the cache and its geometry was updated, avoiding redundant cached protected regions when both UnmapWindow and RemoveProtectedWindow cache the same window */
++    Bool found = FALSE;
++    UaceDeletedWindowCacheRec *item;
++    xorg_list_for_each_entry(item, &uaceDeletedCache, list) {
++        if (item->id == pWin->drawable.id) {
++            item->x = pWin->drawable.x;
++            item->y = pWin->drawable.y;
++            item->width = pWin->drawable.width;
++            item->height = pWin->drawable.height;
++            found = TRUE;
++            break;
++        }
++    }
++
++    if (!found) {
++        UaceDeletedWindowCacheRec *rec = malloc(sizeof(*rec));
++        if (!rec) {
++            return;
++        }
++        rec->id = pWin->drawable.id;
++        rec->x = pWin->drawable.x;
++        rec->y = pWin->drawable.y;
++        rec->width = pWin->drawable.width;
++        rec->height = pWin->drawable.height;
++        xorg_list_append(&rec->list, &uaceDeletedCache);
++    }
++
++    uaceProtectedRegionTimer = TimerSet(uaceProtectedRegionTimer, 0, 500, UaceProtectedRegionEraseTimerCb, NULL);
 +}
 +
 +/**
@@ -494,7 +637,7 @@ Index: xorg-server/dix/dispatch.c
  static int
  DoGetImage(ClientPtr client, int format, Drawable drawable,
             int x, int y, int width, int height,
-@@ -2163,6 +2524,7 @@ DoGetImage(ClientPtr client, int format,
+@@ -2163,6 +2660,7 @@ DoGetImage(ClientPtr client, int format,
  
      relx = x;
      rely = y;
@@ -502,7 +645,7 @@ Index: xorg-server/dix/dispatch.c
  
      if (pDraw->type == DRAWABLE_WINDOW) {
          WindowPtr pWin = (WindowPtr) pDraw;
-@@ -2283,16 +2645,21 @@ DoGetImage(ClientPtr client, int format,
+@@ -2283,16 +2781,21 @@ DoGetImage(ClientPtr client, int format,
                                           width,
                                           nlines,
                                           format, planemask, (void *) pBuf);
@@ -530,14 +673,17 @@ Index: xorg-server/dix/dispatch.h
 ===================================================================
 --- xorg-server.orig/dix/dispatch.h
 +++ xorg-server/dix/dispatch.h
-@@ -142,4 +142,9 @@ int ProcUninstallColormap(ClientPtr /* c
+@@ -142,4 +142,12 @@ int ProcUninstallColormap(ClientPtr /* c
  int ProcUnmapSubwindows(ClientPtr /* client */ );
  int ProcUnmapWindow(ClientPtr /* client */ );
  
 +Bool IsClientWindowManager(ClientPtr client , ScreenPtr pScreen );
 +void UaceCensorImage(ClientPtr client, DrawablePtr pSrc, DrawablePtr pDst, int x, int y, int w, int h);
++Bool UaceIsProtectedWindow(WindowPtr pWin);
++void UaceCacheWindowGeometry(WindowPtr pWin);
 +int CreateCensorImage(ClientPtr client, GCPtr pGC, DrawablePtr pDraw,
-+        xRectangle pRects, unsigned int bgPixel, unsigned int lockPixel);
++        const BoxRec *imageBox, xRectangle *rect, unsigned int bgPixel,
++        unsigned int lockPixel);
 +
  #endif                          /* DISPATCH_H */
 Index: xorg-server/include/window.h
@@ -557,7 +703,15 @@ Index: xorg-server/dix/window.c
 ===================================================================
 --- xorg-server.orig/dix/window.c
 +++ xorg-server/dix/window.c
-@@ -692,6 +692,20 @@ InitRootWindow(WindowPtr pWin)
+@@ -113,6 +113,7 @@ Equipment Corporation.
+ #include "colormapst.h"
+ #include "cursorstr.h"
+ #include "dixstruct.h"
++#include "dispatch.h"
+ #include "gcstruct.h"
+ #include "servermd.h"
+ #include "mivalidate.h"
+@@ -692,6 +693,20 @@ InitRootWindow(WindowPtr pWin)
      /* We SHOULD check for an error value here XXX */
      (*pScreen->ChangeWindowAttributes) (pWin, backFlag);
  
@@ -578,3 +732,14 @@ Index: xorg-server/dix/window.c
      MapWindow(pWin, serverClient);
  }
  
+@@ -2859,6 +2874,10 @@ UnmapWindow(WindowPtr pWin, Bool fromCon
+         (*pScreen->MarkWindow) (pLayerWin->parent);
+     }
+     pWin->mapped = FALSE;
++    /* When a protected window is unmapped, the mask disappears before the window. Cache its geometry so XSHM recording can still censor it */
++    if (UaceIsProtectedWindow(pWin)) {
++        UaceCacheWindowGeometry(pWin);
++    }
+     if (wasRealized)
+         UnrealizeTree(pWin, fromConfigure);
+     if (wasViewable && !fromConfigure) {
