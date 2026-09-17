@@ -1,3 +1,9 @@
+xorg-server (2:21.1.16-1deepin11) unstable; urgency=medium
+
+  * fix: Fix an issue where screenshot protection was ineffective in certain scenarios 
+
+ -- lijunjie <lijunjie@uniontech.com>  Thu, 17 Sep 2026 19:40:33 +0800
+
 xorg-server (2:21.1.16-1deepin10) unstable; urgency=medium
 
   * Rebuild with LTO enabled (dpkg vendor feature optimize/lto).
