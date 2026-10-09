@@ -31,3 +31,4 @@ CVE-2026-55999.patch
 100-deepin-backing-state.patch
 101-fix-ztgd2026090100017.patch
 CVE-2026-88812.patch
+CVE-2026-93521.patch
