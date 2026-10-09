@@ -1,3 +1,12 @@
+xorg-server (2:21.1.16-1deepin12) unstable; urgency=medium
+
+  * fix(cve): CVE-2026-88812 (unknown) - xkb: NULL text pointer after
+    free in _CheckSetDoodad error path   Upstream:
+    https://gitlab.freedesktop.org/xorg/xserver/-
+    /commit/c724006ee76fb002add50fcb4d97e8c96c279f09.patch
+
+ -- deepin-ci-robot <packages@deepin.org>  Sat, 10 Oct 2026 06:59:11 +0800
+
 xorg-server (2:21.1.16-1deepin11) unstable; urgency=medium
 
   * fix: Fix an issue where screenshot protection was ineffective in certain scenarios 
