@@ -8,6 +8,10 @@ xorg-server (2:21.1.16-1deepin12) unstable; urgency=medium
     barrier events in input_constrain_cursor   Upstream:
     https://gitlab.freedesktop.org/xorg/xserver/-
     /commit/9c3880d0745acefc98ed37e79498dfbe558a0f40.patch
+  * fix(cve): CVE-2026-93518 (unknown) - xkb: widen size_syms, num_syms,
+    size_acts, num_acts to unsigned int   Upstream:
+    https://gitlab.freedesktop.org/xorg/xserver/-
+    /commit/558ba8f784b0f5d4d96948051b2f04c983af20cc
 
  -- deepin-ci-robot <packages@deepin.org>  Sat, 10 Oct 2026 11:16:37 +0800
 
