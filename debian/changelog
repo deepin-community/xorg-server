@@ -1,3 +1,12 @@
+xorg-server (2:21.1.16-1deepin12) unstable; urgency=medium
+
+  * fix(cve): CVE-2026-93515 (unknown) - present: unlink notifies from
+    window list in present_clear_window_notifies   Upstream:
+    https://gitlab.freedesktop.org/xorg/xserver/-
+    /commit/a469f98bcfab50dab607ff5ac24037632b0079a3.patch
+
+ -- deepin-ci-robot <packages@deepin.org>  Sat, 10 Oct 2026 11:16:37 +0800
+
 xorg-server (2:21.1.16-1deepin11) unstable; urgency=medium
 
   * fix: Fix an issue where screenshot protection was ineffective in certain scenarios 
