@@ -9,75 +9,179 @@ Author: UnionTech <support@uniontech.com>
 Forwarded: not-needed
 Last-Update: 2026-09-09
 ---
-diff --git a/composite/compalloc.c b/composite/compalloc.c
-index 0d4af9e..4b9eef6 100644
---- a/composite/compalloc.c
-+++ b/composite/compalloc.c
-@@ -46,6 +46,10 @@
+Index: xorg-server/composite/compalloc.c
+===================================================================
+--- xorg-server.orig/composite/compalloc.c
++++ xorg-server/composite/compalloc.c
+@@ -46,6 +46,7 @@
  #endif
  
  #include "compint.h"
 +#include "damagestr.h"
-+#include "property.h"
-+
-+#include <X11/Xatom.h>
  
  static Bool
  compScreenUpdate(ClientPtr pClient, void *closure)
-@@ -73,6 +77,17 @@ compMarkAncestors(WindowPtr pWin)
-     }
+@@ -74,6 +75,93 @@ compMarkAncestors(WindowPtr pWin)
  }
  
-+static void
-+compSetisUsingBackingPixmap(WindowPtr pWin, CompWindowPtr cw, CARD32 state)
+ static void
++compRefreshRegion(WindowPtr pWin, RegionPtr reg)
 +{
-+    if (!cw || cw->isUsingBackingPixmap == state)
-+        return;
++    ScreenPtr pScreen = pWin->drawable.pScreen;
++    WindowPtr pParent = pWin->parent;
++    CompWindowPtr cw = GetCompWindow(pWin);
++    PixmapPtr pPixmap;
++    int srcx, srcy, nBox;
++    BoxPtr pBox;
 +
-+    cw->isUsingBackingPixmap = state;
-+    dixChangeWindowProperty(serverClient, pWin, backingPixmapStateAtom,
-+                            XA_CARDINAL, 32, PropModeReplace, 1, &state, TRUE);
++    if (!pParent || pWin->redirectDraw == RedirectDrawNone || !cw)
++        return;
++    pPixmap = (*pScreen->GetWindowPixmap) (pWin);
++    if (!pPixmap)
++        return;
++    nBox = RegionNumRects(reg);
++    if (!nBox)
++        return;
++    pBox = RegionRects(reg);
++    srcx = pPixmap->screen_x - pParent->drawable.x;
++    srcy = pPixmap->screen_y - pParent->drawable.y;
++
++    cw->refreshing = TRUE;
++    if (pParent->drawable.depth == pWin->drawable.depth) {
++        GCPtr pGC = GetScratchGC(pWin->drawable.depth, pScreen);
++
++        if (pGC) {
++            ChangeGCVal val;
++
++            val.val = IncludeInferiors;
++            ChangeGC(NullClient, pGC, GCSubwindowMode, &val);
++            ValidateGC(&pPixmap->drawable, pGC);
++            while (nBox--) {
++                (*pGC->ops->CopyArea) (&pParent->drawable,
++                                       &pPixmap->drawable,
++                                       pGC,
++                                       pBox->x1 + srcx, pBox->y1 + srcy,
++                                       pBox->x2 - pBox->x1, pBox->y2 - pBox->y1,
++                                       pBox->x1, pBox->y1);
++                pBox++;
++            }
++            FreeScratchGC(pGC);
++        }
++    }
++    else {
++        PictFormatPtr pSrcFormat = PictureWindowFormat(pParent);
++        PictFormatPtr pDstFormat = PictureWindowFormat(pWin);
++        XID inferiors = IncludeInferiors;
++        int error;
++        PicturePtr pSrcPicture = CreatePicture(None, &pParent->drawable, pSrcFormat,
++                                               CPSubwindowMode, &inferiors,
++                                               serverClient, &error);
++        PicturePtr pDstPicture = CreatePicture(None, &pPixmap->drawable, pDstFormat,
++                                               0, 0, serverClient, &error);
++
++        if (pSrcPicture && pDstPicture) {
++            while (nBox--) {
++                CompositePicture(PictOpSrc, pSrcPicture, NULL, pDstPicture,
++                                 pBox->x1 + srcx, pBox->y1 + srcy, 0, 0,
++                                 pBox->x1, pBox->y1,
++                                 pBox->x2 - pBox->x1, pBox->y2 - pBox->y1);
++                pBox++;
++            }
++        }
++        if (pSrcPicture)
++            FreePicture(pSrcPicture, 0);
++        if (pDstPicture)
++            FreePicture(pDstPicture, 0);
++    }
++    cw->refreshing = FALSE;
 +}
 +
- static void
++void
++compRefreshWindowBacking(WindowPtr pWin)
++{
++    RegionRec full;
++    BoxRec box;
++
++    box.x1 = 0;
++    box.y1 = 0;
++    box.x2 = pWin->drawable.width;
++    box.y2 = pWin->drawable.height;
++    RegionInit(&full, &box, 1);
++    compRefreshRegion(pWin, &full);
++    RegionUninit(&full);
++}
++
++static void
  compReportDamage(DamagePtr pDamage, RegionPtr pRegion, void *closure)
  {
-@@ -81,13 +96,29 @@ compReportDamage(DamagePtr pDamage, RegionPtr pRegion, void *closure)
+     WindowPtr pWin = (WindowPtr) closure;
+@@ -81,13 +169,41 @@ compReportDamage(DamagePtr pDamage, Regi
      CompScreenPtr cs = GetCompScreen(pScreen);
      CompWindowPtr cw = GetCompWindow(pWin);
  
 -    if (!cs->pendingScreenUpdate) {
 -        QueueWorkProc(compScreenUpdate, serverClient, pScreen);
 -        cs->pendingScreenUpdate = TRUE;
-+    /* Stock paint schedule only applies to Automatic windows: Manual windows
-+     * never had a sensor, and running it would lift override content into
-+     * the parent backing. */
 +    if (cw->update == CompositeRedirectAutomatic) {
 +        if (!cs->pendingScreenUpdate) {
 +            QueueWorkProc(compScreenUpdate, serverClient, pScreen);
 +            cs->pendingScreenUpdate = TRUE;
 +        }
-+
 +        cw->damaged = TRUE;
 +        compMarkAncestors(pWin);
-     }
--    cw->damaged = TRUE;
- 
--    compMarkAncestors(pWin);
-+    if (cw->update == CompositeRedirectManual) {
-+        if (pDamage->clientMark && cw->isUsingBackingPixmap == 0) {
-+            compSetisUsingBackingPixmap(pWin, cw, 1);
++    }
++    else if (cw->update == CompositeRedirectManual && pDamage->clientMark &&
++             !cw->refreshing) {
++        BoxRec box;
++        RegionRec full, missing;
++
++        box.x1 = 0;
++        box.y1 = 0;
++        box.x2 = pWin->drawable.width;
++        box.y2 = pWin->drawable.height;
++        RegionInit(&full, &box, 1);
++        RegionUnion(&cw->clientDamage, &cw->clientDamage, pRegion);
++        RegionNull(&missing);
++        RegionSubtract(&missing, &full, &cw->clientDamage);
++        if (RegionNotEmpty(&missing)) {
++            compRefreshRegion(pWin, &missing);
++        }
++        else {
++            cw->clientFull = TRUE;
 +            if (cw->damageRegistered) {
 +                DamageUnregister(cw->damage);
 +                cw->damageRegistered = FALSE;
 +            }
 +        }
-+        DamageEmpty(pDamage);
-+    }
++        RegionUninit(&missing);
++        RegionUninit(&full);
+     }
+-    cw->damaged = TRUE;
+-
+-    compMarkAncestors(pWin);
++    DamageEmpty(pDamage);
  }
  
  static void
-@@ -206,10 +237,6 @@ compRedirectWindow(ClientPtr pClient, WindowPtr pWin, int update)
+@@ -99,6 +215,7 @@ compDestroyDamage(DamagePtr pDamage, voi
+     cw->damage = 0;
+     cw->damaged = 0;
+     cw->damageRegistered = 0;
++    RegionUninit(&cw->clientDamage);
+ }
+ 
+ static Bool
+@@ -195,6 +312,9 @@ compRedirectWindow(ClientPtr pClient, Wi
+         cw->oldy = COMP_ORIGIN_INVALID;
+         cw->damageRegistered = FALSE;
+         cw->damaged = FALSE;
++        RegionNull(&cw->clientDamage);
++        cw->clientFull = FALSE;
++        cw->refreshing = FALSE;
+         cw->pOldPixmap = NullPixmap;
+         dixSetPrivate(&pWin->devPrivates, CompWindowPrivateKey, cw);
+     }
+@@ -206,10 +326,6 @@ compRedirectWindow(ClientPtr pClient, Wi
          if (!anyMarked)
              anyMarked = compMarkWindows(pWin, &pLayerWin);
  
@@ -88,18 +192,13 @@ index 0d4af9e..4b9eef6 100644
          cw->update = CompositeRedirectManual;
      }
      else if (cw->update == CompositeRedirectAutomatic && !cw->damageRegistered) {
-@@ -618,13 +645,23 @@ compAllocPixmap(WindowPtr pWin)
+@@ -618,13 +734,15 @@ compAllocPixmap(WindowPtr pWin)
          pWin->redirectDraw = RedirectDrawManual;
  
      compSetPixmap(pWin, pPixmap, bw);
-+
-+    cw->isUsingBackingPixmap = 0;
-+    {
-+        CARD32 residue = 0;
-+        dixChangeWindowProperty(serverClient, pWin, backingPixmapStateAtom,
-+                                XA_CARDINAL, 32, PropModeReplace, 1, &residue, TRUE);
-+    }
-+
++    RegionEmpty(&cw->clientDamage);
++    cw->clientFull = FALSE;
++    cw->refreshing = FALSE;
      cw->oldx = COMP_ORIGIN_INVALID;
      cw->oldy = COMP_ORIGIN_INVALID;
      cw->damageRegistered = FALSE;
@@ -108,57 +207,34 @@ index 0d4af9e..4b9eef6 100644
 -        cw->damageRegistered = TRUE;
 -    }
 +
-+    /* Register for Manual windows too so their real first draw can flip the
-+     * backing-state property (compReportDamage); the residue CopyArea above
-+     * predates this register, so it cannot trigger it. */
 +    DamageRegister(&pWin->drawable, cw->damage);
 +    cw->damageRegistered = TRUE;
      status = TRUE;
  
  out:
-diff --git a/composite/compext.c b/composite/compext.c
-index 34a2a53..86a396b 100644
---- a/composite/compext.c
-+++ b/composite/compext.c
-@@ -53,6 +53,8 @@
- static CARD8 CompositeReqCode;
- static DevPrivateKeyRec CompositeClientPrivateKeyRec;
- 
-+Atom backingPixmapStateAtom;
-+
- #define CompositeClientPrivateKey (&CompositeClientPrivateKeyRec)
- RESTYPE CompositeClientWindowType;
- RESTYPE CompositeClientSubwindowsType;
-@@ -530,6 +532,8 @@ CompositeExtensionInit(void)
-     ExtensionEntry *extEntry;
-     int s;
- 
-+    backingPixmapStateAtom = MakeAtom("_DDE_NET_WM_BACKING_PIXMAP_STATE", 32, TRUE);
-+
-     /* Assume initialization is going to fail */
-     noCompositeExtension = TRUE;
- 
-diff --git a/composite/compint.h b/composite/compint.h
-index 423b641..d74a23f 100644
---- a/composite/compint.h
-+++ b/composite/compint.h
-@@ -97,8 +97,11 @@ typedef struct _CompWindow {
+Index: xorg-server/composite/compint.h
+===================================================================
+--- xorg-server.orig/composite/compint.h
++++ xorg-server/composite/compint.h
+@@ -97,8 +97,13 @@ typedef struct _CompWindow {
      int oldy;
      PixmapPtr pOldPixmap;
      int borderClipX, borderClipY;
-+    CARD32 isUsingBackingPixmap;    /* 0=CopyArea residue, 1=client drew real frame */
++    RegionRec clientDamage;
++    Bool clientFull;
++    Bool refreshing;
  } CompWindowRec, *CompWindowPtr;
  
-+extern Atom backingPixmapStateAtom;
++extern void compRefreshWindowBacking(WindowPtr pWin);
 +
  #define COMP_ORIGIN_INVALID	    0x80000000
  
  typedef struct _CompSubwindows {
-diff --git a/miext/damage/damage.c b/miext/damage/damage.c
-index f3ae4eb..70e6171 100644
---- a/miext/damage/damage.c
-+++ b/miext/damage/damage.c
-@@ -303,6 +303,24 @@ damageRegionProcessPending(DrawablePtr pDrawable)
+Index: xorg-server/miext/damage/damage.c
+===================================================================
+--- xorg-server.orig/miext/damage/damage.c
++++ xorg-server/miext/damage/damage.c
+@@ -303,6 +303,26 @@ damageRegionProcessPending(DrawablePtr p
  
  }
  
@@ -166,6 +242,7 @@ index f3ae4eb..70e6171 100644
 +DamageSetClientMark(DrawablePtr pDrawable)
 +{
 +    DamagePtr pDmg;
++
 +    drawableDamage(pDrawable);
 +    for (pDmg = pDamage; pDmg; pDmg = pDmg->pNext)
 +        pDmg->clientMark = TRUE;
@@ -175,6 +252,7 @@ index f3ae4eb..70e6171 100644
 +_damageSetClientMarks(DrawablePtr pDrawable, Bool mark)
 +{
 +    DamagePtr pDmg;
++
 +    drawableDamage(pDrawable);
 +    for (pDmg = pDamage; pDmg; pDmg = pDmg->pNext)
 +        pDmg->clientMark = mark;
@@ -183,7 +261,7 @@ index f3ae4eb..70e6171 100644
  #if DAMAGE_DEBUG_ENABLE
  #define damageDamageBox(d,b,m) _damageDamageBox(d,b,m,__FUNCTION__)
  static void
-@@ -315,6 +333,7 @@ damageDamageBox(DrawablePtr pDrawable, BoxPtr pBox, int subWindowMode)
+@@ -315,6 +335,7 @@ damageDamageBox(DrawablePtr pDrawable, B
  {
      RegionRec region;
  
@@ -191,7 +269,7 @@ index f3ae4eb..70e6171 100644
      RegionInit(&region, pBox, 1);
  #if DAMAGE_DEBUG_ENABLE
      _damageRegionAppend(pDrawable, &region, TRUE, subWindowMode, where);
-@@ -322,6 +341,7 @@ damageDamageBox(DrawablePtr pDrawable, BoxPtr pBox, int subWindowMode)
+@@ -322,6 +343,7 @@ damageDamageBox(DrawablePtr pDrawable, B
      damageRegionAppend(pDrawable, &region, TRUE, subWindowMode);
  #endif
      RegionUninit(&region);
@@ -199,10 +277,10 @@ index f3ae4eb..70e6171 100644
  }
  
  static void damageValidateGC(GCPtr, unsigned long, DrawablePtr);
-diff --git a/miext/damage/damage.h b/miext/damage/damage.h
-index 525b2db..09d32e8 100644
---- a/miext/damage/damage.h
-+++ b/miext/damage/damage.h
+Index: xorg-server/miext/damage/damage.h
+===================================================================
+--- xorg-server.orig/miext/damage/damage.h
++++ xorg-server/miext/damage/damage.h
 @@ -110,6 +110,9 @@ extern _X_EXPORT void
  extern _X_EXPORT void
   DamageSetReportAfterOp(DamagePtr pDamage, Bool reportAfter);
@@ -213,23 +291,23 @@ index 525b2db..09d32e8 100644
  extern _X_EXPORT DamageScreenFuncsPtr DamageGetScreenFuncs(ScreenPtr);
  
  #endif                          /* _DAMAGE_H_ */
-diff --git a/miext/damage/damagestr.h b/miext/damage/damagestr.h
-index 0d07872..cbfa301 100644
---- a/miext/damage/damagestr.h
-+++ b/miext/damage/damagestr.h
+Index: xorg-server/miext/damage/damagestr.h
+===================================================================
+--- xorg-server.orig/miext/damage/damagestr.h
++++ xorg-server/miext/damage/damagestr.h
 @@ -47,6 +47,7 @@ typedef struct _damage {
      DamageDestroyFunc damageDestroy;
  
      Bool reportAfter;
-+    Bool clientMark;            /* deepin: last appended damage came from client rendering */
++    Bool clientMark;
      RegionRec pendingDamage;    /* will be flushed post submission at the latest */
      ScreenPtr pScreen;
  } DamageRec;
-diff --git a/present/present_scmd.c b/present/present_scmd.c
-index 239055b..aaa1cf4 100644
---- a/present/present_scmd.c
-+++ b/present/present_scmd.c
-@@ -598,6 +598,7 @@ present_execute(present_vblank_ptr vblank, uint64_t ust, uint64_t crtc_msc)
+Index: xorg-server/present/present_scmd.c
+===================================================================
+--- xorg-server.orig/present/present_scmd.c
++++ xorg-server/present/present_scmd.c
+@@ -598,6 +598,7 @@ present_execute(present_vblank_ptr vblan
                  } else
                      damage = &window->clipList;
  
@@ -237,3 +315,45 @@ index 239055b..aaa1cf4 100644
                  DamageDamageRegion(&vblank->window->drawable, damage);
                  return;
              }
+Index: xorg-server/composite/compwindow.c
+===================================================================
+--- xorg-server.orig/composite/compwindow.c
++++ xorg-server/composite/compwindow.c
+@@ -400,6 +400,18 @@ compMoveWindow(WindowPtr pWin, int x, in
+     pScreen->MoveWindow = compMoveWindow;
+ 
+     compFreeOldPixmap(pWin);
++    {
++        CompWindowPtr cw = GetCompWindow(pWin);
++
++        if (cw && pWin->redirectDraw != RedirectDrawNone && !cw->clientFull) {
++            RegionEmpty(&cw->clientDamage);
++            if (!cw->damageRegistered) {
++                DamageRegister(&pWin->drawable, cw->damage);
++                cw->damageRegistered = TRUE;
++            }
++            compRefreshWindowBacking(pWin);
++        }
++    }
+     compCheckTree(pScreen);
+ }
+ 
+@@ -416,6 +428,18 @@ compResizeWindow(WindowPtr pWin, int x,
+     pScreen->ResizeWindow = compResizeWindow;
+ 
+     compFreeOldPixmap(pWin);
++    {
++        CompWindowPtr cw = GetCompWindow(pWin);
++
++        if (cw && pWin->redirectDraw != RedirectDrawNone && !cw->clientFull) {
++            RegionEmpty(&cw->clientDamage);
++            if (!cw->damageRegistered) {
++                DamageRegister(&pWin->drawable, cw->damage);
++                cw->damageRegistered = TRUE;
++            }
++            compRefreshWindowBacking(pWin);
++        }
++    }
+     compCheckTree(pWin->drawable.pScreen);
+ }
+ 
