@@ -1,3 +1,10 @@
+xorg-server (2:21.1.16-1deepin14) unstable; urgency=medium
+
+  * Add optional versioned Present policy hooks for Copy scheduling,
+    request selection and DRI3 modifier preference.
+
+ -- 胡力文 <151860361+TudouXiang@users.noreply.github.com>  Wed, 04 Nov 2026 11:54:44 +0800
+
 xorg-server (2:21.1.16-1deepin13) unstable; urgency=medium
 
   * fix(cve): CVE-2026-88812 (unknown) - xkb: NULL text pointer after

@@ -38,3 +38,4 @@ CVE-2026-93517.patch
 CVE-2026-88812.patch
 CVE-2026-93521.patch
 CVE-2026-93516.patch
+present-policy.patch
