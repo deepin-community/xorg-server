@@ -1,0 +1,1119 @@
+Description: Add optional versioned Present policy hooks
+ Expose Copy, request selection and modifier callbacks to Xorg modules.
+ Keep request execution, bounded Copy deferral, fences, notifications and
+ resource ownership in the server; retain native behavior without a provider.
+Origin: local
+Forwarded: no
+---
+diff --git a/hw/xfree86/sdksyms.sh b/hw/xfree86/sdksyms.sh
+--- a/hw/xfree86/sdksyms.sh
++++ b/hw/xfree86/sdksyms.sh
+@@ -95,6 +95,9 @@ cat > sdksyms.c << EOF
+ #include "xf86Modes.h"
+ #include "xf86RandR12.h"
+ /* #include "xf86Rename.h" */
++#ifdef PRESENT
++#include "present.h"
++#endif
+ 
+ 
+ /* hw/xfree86/ddc/Makefile.am */
+diff --git a/present/Makefile.am b/present/Makefile.am
+--- a/present/Makefile.am
++++ b/present/Makefile.am
+@@ -10,6 +10,7 @@ libpresent_la_SOURCES = \
+ 	present_fake.c \
+ 	present_fence.c \
+ 	present_notify.c \
++	present_policy.c \
+ 	present_priv.h \
+ 	present_request.c \
+ 	present_scmd.c \
+diff --git a/present/meson.build b/present/meson.build
+--- a/present/meson.build
++++ b/present/meson.build
+@@ -5,6 +5,7 @@ srcs_present = [
+     'present_fake.c',
+     'present_fence.c',
+     'present_notify.c',
++    'present_policy.c',
+     'present_request.c',
+     'present_scmd.c',
+     'present_screen.c',
+diff --git a/present/present.h b/present/present.h
+--- a/present/present.h
++++ b/present/present.h
+@@ -24,6 +24,7 @@
+ #define _PRESENT_H_
+ 
+ #include <X11/extensions/presentproto.h>
++#include <stdint.h>
+ #include "randrstr.h"
+ #include "presentext.h"
+ 
+@@ -139,6 +140,114 @@ typedef struct present_screen_info {
+ 
+ } present_screen_info_rec, *present_screen_info_ptr;
+ 
++/* Optional policy hooks for native Xorg modules. The server always retains
++ * ownership of Present requests, regions, fences, notifications and cleanup.
++ */
++#define PRESENT_POLICY_ABI_VERSION 1
++
++typedef enum {
++    PRESENT_POLICY_COPY_DEFAULT = 0,
++    PRESENT_POLICY_COPY_EXECUTE = 1,
++    PRESENT_POLICY_COPY_SKIP = 2,
++    /* Retain ownership until a bounded later Copy, or truthful supersession. */
++    PRESENT_POLICY_COPY_DEFER = 3
++} PresentPolicyCopyAction;
++
++typedef enum {
++    PRESENT_POLICY_QUEUE_DEFAULT = 0,
++    PRESENT_POLICY_QUEUE_TARGET_MSC = 1
++} PresentPolicyQueueMode;
++
++typedef enum {
++    PRESENT_POLICY_DRIVER_CHECK_DEFAULT = 0,
++    PRESENT_POLICY_DRIVER_CHECK_FIRST = 1
++} PresentPolicyDriverCheckOrder;
++
++typedef struct {
++    uint32_t abi_version;
++    uint32_t struct_size;
++    PresentPolicyCopyAction (*copy_action)(WindowPtr window,
++                                           RRCrtcPtr crtc,
++                                           uint64_t crtc_msc);
++    PresentPolicyQueueMode (*queue_mode)(WindowPtr window,
++                                         RRCrtcPtr crtc,
++                                         uint64_t target_msc,
++                                         uint64_t crtc_msc);
++    PresentPolicyDriverCheckOrder (*driver_check_order)(WindowPtr window,
++                                                        RRCrtcPtr crtc);
++} PresentPolicyHooksV1;
++
++/* Query the host API before registering a module initializer. */
++extern _X_EXPORT Bool
++present_policy_query(uint32_t *abi_version, uint32_t *hooks_size);
++
++/* A single provider may register per server generation. Registration copies
++ * the hook table; the opaque provider identity is used for idempotence and
++ * matching unregister calls.
++ */
++extern _X_EXPORT Bool
++present_policy_register(const void *provider, const PresentPolicyHooksV1 *hooks);
++
++extern _X_EXPORT Bool
++present_policy_copy_defer_supported(void);
++
++extern _X_EXPORT void
++present_policy_unregister(const void *provider);
++
++/* Optional request policy is independently versioned: never extend the V1
++ * copy/queue hook table, which is also consumed by already built modules.
++ * The callback is a pure request decision and must not consume copy quota.
++ */
++#define PRESENT_POLICY_REQUEST_ABI_VERSION 1
++
++typedef struct {
++    uint32_t abi_version;
++    uint32_t struct_size;
++    Bool (*force_copy)(WindowPtr window);
++} PresentPolicyRequestHooksV1;
++
++extern _X_EXPORT Bool
++present_policy_request_query(uint32_t *abi_version, uint32_t *hooks_size);
++
++/* Register only after the same provider has registered the original hooks.
++ * present_policy_unregister/reset clears both tables atomically.
++ */
++extern _X_EXPORT Bool
++present_policy_request_register(const void *provider,
++                                const PresentPolicyRequestHooksV1 *hooks);
++
++/* Optional modifier preference: independently versioned, owned by the same
++ * provider as the original hooks. Inputs are immutable request-owned lists;
++ * a suggestion must already be present in their union. No quota is consumed.
++ */
++#define PRESENT_POLICY_MODIFIER_ABI_VERSION 1
++
++typedef struct {
++    uint32_t abi_version;
++    uint32_t struct_size;
++    Bool (*select)(WindowPtr window, CARD32 format, CARD8 depth, CARD8 bpp,
++                   CARD32 num_window, const CARD64 *window_modifiers,
++                   CARD32 num_screen, const CARD64 *screen_modifiers,
++                   CARD64 *preferred);
++} PresentPolicyModifierHooksV1;
++
++extern _X_EXPORT Bool
++present_policy_modifier_query(uint32_t *abi_version, uint32_t *hooks_size);
++
++extern _X_EXPORT Bool
++present_policy_modifier_register(const void *provider,
++                                 const PresentPolicyModifierHooksV1 *hooks);
++
++/* Internal call site used by DRI3; the caller validates membership and owns
++ * allocation/commit of any replacement reply arrays.
++ */
++extern Bool
++present_policy_select_modifier(WindowPtr window, CARD32 format,
++                               CARD8 depth, CARD8 bpp,
++                               CARD32 num_window, const CARD64 *window_modifiers,
++                               CARD32 num_screen, const CARD64 *screen_modifiers,
++                               CARD64 *preferred);
++
+ /*
+  * Called when 'event_id' occurs. 'ust' and 'msc' indicate when the
+  * event actually happened
+diff --git a/present/present_execute.c b/present/present_execute.c
+--- a/present/present_execute.c
++++ b/present/present_execute.c
+@@ -22,6 +22,135 @@
+ 
+ #include "present_priv.h"
+ 
++/* A hardware queue can be silently cancelled during DPMS/CRTC teardown.
++ * Only policy-deferred copies own this one-shot fallback. Neither replacement
++ * nor a retry may move the original deadline later.
++ */
++#define PRESENT_COPY_DEFER_TIMEOUT_MS 50
++
++void
++present_execute_copy_cancel_timer(present_vblank_ptr vblank)
++{
++    OsTimerPtr timer = vblank->policy_copy_timer;
++
++    vblank->policy_copy_timer = NULL;
++    if (timer)
++        TimerFree(timer);
++}
++
++void
++present_execute_copy_abort(present_vblank_ptr vblank)
++{
++    present_screen_priv_ptr screen_priv = present_screen_priv(vblank->screen);
++
++    present_execute_copy_cancel_timer(vblank);
++    /* Unlink first: an abort must not find this event if a backend notifies
++     * synchronously. xorg_list_del initializes the removed entry.
++     */
++    xorg_list_del(&vblank->event_queue);
++    vblank->queued = FALSE;
++    if (vblank->crtc && RRCrtcExists(vblank->screen, vblank->crtc)) {
++        screen_priv->abort_vblank(vblank->screen, vblank->window, vblank->crtc,
++                                  vblank->event_id, vblank->target_msc);
++    } else {
++        /* Never dereference or pass a destroyed CRTC to the DDX. */
++        vblank->crtc = NULL;
++    }
++}
++
++void
++present_execute_copy_flush(present_vblank_ptr vblank)
++{
++    uint64_t ust = GetTimeInMicros();
++    uint64_t msc = vblank->policy_copy_last_msc;
++
++    present_execute_copy_abort(vblank);
++    if (vblank->crtc) {
++        present_screen_priv_ptr crtc_priv =
++            present_screen_priv(vblank->crtc->pScreen);
++        uint64_t live_ust, live_msc;
++
++        if (crtc_priv && crtc_priv->info && crtc_priv->info->get_ust_msc &&
++            crtc_priv->info->get_ust_msc(vblank->crtc, &live_ust, &live_msc) == Success) {
++            ust = live_ust;
++            msc = live_msc;
++        }
++    }
++    /* A deferred request is already fence-ready. Its forced retry bypasses
++     * both policy and scheduling; only actual Copy may release its pixmap.
++     */
++    present_execute_copy(vblank, msc);
++    present_execute_post(vblank, ust, msc);
++}
++
++void
++present_execute_copy_discard(present_vblank_ptr vblank, uint64_t ust,
++                             uint64_t crtc_msc)
++{
++    present_execute_copy_abort(vblank);
++    present_vblank_scrap(vblank);
++    /* It was superseded, so CompleteSkip is truthful. Do not leave this
++     * record waiting for a hardware callback which DPMS may have cancelled.
++     */
++    present_execute_post(vblank, ust, crtc_msc);
++}
++
++static CARD32
++present_execute_copy_timeout(OsTimerPtr timer, CARD32 now, void *data)
++{
++    present_vblank_ptr vblank = data;
++
++    (void) now;
++    vblank->policy_copy_timer = NULL;
++    TimerFree(timer);
++    present_execute_copy_flush(vblank);
++    /* DoTimer will not touch the freed timer when the callback returns 0. */
++    return 0;
++}
++
++static Bool
++present_execute_defer_copy(present_vblank_ptr vblank, uint64_t crtc_msc)
++{
++    present_screen_priv_ptr screen_priv = present_screen_priv(vblank->screen);
++    uint64_t target = vblank->target_msc, exec = vblank->exec_msc;
++    CARD32 now = GetTimeInMillis();
++    INT32 remaining;
++
++    if (!vblank->policy_copy_defer_allowed || !vblank->crtc ||
++        !RRCrtcExists(vblank->screen, vblank->crtc))
++        return FALSE;
++
++    if (!vblank->policy_copy_deadline_valid) {
++        vblank->policy_copy_deadline_msc = crtc_msc + 1;
++        vblank->policy_copy_deadline_ms = now + PRESENT_COPY_DEFER_TIMEOUT_MS;
++        vblank->policy_copy_deadline_valid = TRUE;
++    }
++    remaining = (INT32) (vblank->policy_copy_deadline_ms - now);
++    if (remaining <= 0 ||
++        !msc_is_after(vblank->policy_copy_deadline_msc, crtc_msc))
++        return FALSE;
++
++    vblank->policy_copy_timer = TimerSet(NULL, 0, remaining,
++                                         present_execute_copy_timeout, vblank);
++    if (!vblank->policy_copy_timer)
++        return FALSE;
++    vblank->target_msc = vblank->policy_copy_deadline_msc;
++    vblank->exec_msc = vblank->target_msc;
++    vblank->policy_copy_last_msc = crtc_msc;
++    vblank->policy_copy_deferred = TRUE;
++    if (screen_priv->queue_vblank(vblank->screen, vblank->window, vblank->crtc,
++                                  vblank->event_id, vblank->exec_msc) == Success) {
++        vblank->queued = TRUE;
++        return TRUE;
++    }
++
++    present_execute_copy_cancel_timer(vblank);
++    vblank->policy_copy_deferred = FALSE;
++    vblank->target_msc = target;
++    vblank->exec_msc = exec;
++    return FALSE;
++}
++
+ /*
+  * Called when the wait fence is triggered; just gets the current msc/ust and
+  * calls the proper execute again. That will re-check the fence and pend the
+@@ -37,19 +166,48 @@ present_wait_fence_triggered(void *param
+     screen_priv->re_execute(vblank);
+ }
+ 
++static Bool
++present_execute_queue_vblank(present_vblank_ptr vblank, uint64_t crtc_msc)
++{
++    WindowPtr window = vblank->window;
++    ScreenPtr screen = window->drawable.pScreen;
++    present_screen_priv_ptr screen_priv = present_screen_priv(screen);
++    PresentPolicyQueueMode mode;
++    uint64_t queue_msc;
++
++    /* Neither queue path can target the next MSC in this case. */
++    if (vblank->exec_msc != crtc_msc + 1 &&
++        (!vblank->crtc || vblank->target_msc != crtc_msc + 1))
++        return FALSE;
++
++    mode = present_policy_queue_mode(window, vblank->crtc,
++                                     vblank->target_msc, crtc_msc);
++
++    /* A policy may request the target MSC only for a real CRTC. Without one,
++     * preserve the existing fake-vblank scheduling path.
++     */
++    if (mode == PRESENT_POLICY_QUEUE_TARGET_MSC && vblank->crtc)
++        queue_msc = vblank->target_msc;
++    else
++        queue_msc = vblank->exec_msc;
++
++    if (queue_msc != crtc_msc + 1)
++        return FALSE;
++
++    return screen_priv->queue_vblank(screen, window, vblank->crtc,
++                                     vblank->event_id, queue_msc) == Success;
++}
++
+ Bool
+ present_execute_wait(present_vblank_ptr vblank, uint64_t crtc_msc)
+ {
+-    WindowPtr                   window = vblank->window;
+-    ScreenPtr                   screen = window->drawable.pScreen;
+-    present_screen_priv_ptr screen_priv = present_screen_priv(screen);
++    if (vblank->policy_copy_deferred)
++        return FALSE;
+ 
+     /* We may have to requeue for the next MSC if check_flip_window prevented
+      * using a flip.
+      */
+-    if (vblank->exec_msc == crtc_msc + 1 &&
+-        screen_priv->queue_vblank(screen, window, vblank->crtc, vblank->event_id,
+-                                  vblank->exec_msc) == Success)
++    if (present_execute_queue_vblank(vblank, crtc_msc))
+         return TRUE;
+ 
+     if (vblank->wait_fence) {
+@@ -67,19 +225,38 @@ present_execute_copy(present_vblank_ptr
+     WindowPtr                   window = vblank->window;
+     ScreenPtr                   screen = window->drawable.pScreen;
+     present_screen_priv_ptr screen_priv = present_screen_priv(screen);
++    PresentPolicyCopyAction action;
+ 
+     /* If present_flip failed, we may have to requeue for the next MSC */
+-    if (vblank->exec_msc == crtc_msc + 1 &&
+-        Success == screen_priv->queue_vblank(screen,
+-                                             window,
+-                                             vblank->crtc,
+-                                             vblank->event_id,
+-                                             vblank->exec_msc)) {
++    if (!vblank->policy_copy_deferred &&
++        present_execute_queue_vblank(vblank, crtc_msc)) {
+         vblank->queued = TRUE;
+         return;
+     }
+ 
+-    present_copy_region(&window->drawable, vblank->pixmap, vblank->update, vblank->x_off, vblank->y_off);
++    if (vblank->policy_copy_action_valid) {
++        action = vblank->policy_copy_action;
++        vblank->policy_copy_action_valid = FALSE;
++    } else {
++        action = present_policy_copy_action(window, vblank->crtc, crtc_msc);
++    }
++    /* Charge an eventual tail Copy to the current policy interval as well,
++     * but never let policy postpone the retained image a second time.
++     */
++    if (vblank->policy_copy_deferred)
++        action = PRESENT_POLICY_COPY_EXECUTE;
++    if (action == PRESENT_POLICY_COPY_DEFER &&
++        present_execute_defer_copy(vblank, crtc_msc))
++        return;
++
++    if (action == PRESENT_POLICY_COPY_SKIP) {
++        vblank->policy_copy_skipped = TRUE;
++        if (vblank->update)
++            RegionDestroy(vblank->update);
++    } else {
++        present_copy_region(&window->drawable, vblank->pixmap, vblank->update,
++                            vblank->x_off, vblank->y_off);
++    }
+ 
+     /* present_copy_region sticks the region into a scratch GC,
+      * which is then freed, freeing the region
+@@ -98,7 +275,7 @@ present_execute_post(present_vblank_ptr
+     /* Compute correct CompleteMode
+      */
+     if (vblank->kind == PresentCompleteKindPixmap) {
+-        if (vblank->pixmap && vblank->window) {
++        if (vblank->pixmap && vblank->window && !vblank->policy_copy_skipped) {
+             if (vblank->has_suboptimal && vblank->reason == PRESENT_FLIP_REASON_BUFFER_FORMAT)
+                 mode = PresentCompleteModeSuboptimalCopy;
+             else
+diff --git a/present/present_policy.c b/present/present_policy.c
+new file mode 100644
+--- /dev/null
++++ b/present/present_policy.c
+@@ -0,0 +1,183 @@
++/*
++ * Copyright © 2026
++ *
++ * Permission to use, copy, modify, distribute, and sell this software and its
++ * documentation for any purpose is hereby granted without fee, provided that
++ * the above copyright notice appear in all copies and that both that copyright
++ * notice and this permission notice appear in supporting documentation.
++ * The software is provided "as is", without warranty of any kind.
++ */
++
++#include "present_priv.h"
++
++#include <string.h>
++
++static const void *policy_provider;
++static PresentPolicyHooksV1 policy_hooks;
++static PresentPolicyRequestHooksV1 request_hooks;
++static PresentPolicyModifierHooksV1 modifier_hooks;
++
++Bool
++present_policy_query(uint32_t *abi_version, uint32_t *hooks_size)
++{
++    if (!abi_version || !hooks_size)
++        return FALSE;
++
++    *abi_version = PRESENT_POLICY_ABI_VERSION;
++    *hooks_size = (uint32_t) sizeof(PresentPolicyHooksV1);
++    return TRUE;
++}
++
++Bool
++present_policy_register(const void *provider, const PresentPolicyHooksV1 *hooks)
++{
++    if (!provider || !hooks ||
++        hooks->abi_version != PRESENT_POLICY_ABI_VERSION ||
++        hooks->struct_size < (uint32_t) sizeof(PresentPolicyHooksV1))
++        return FALSE;
++
++    if (policy_provider)
++        return policy_provider == provider;
++
++    memcpy(&policy_hooks, hooks, sizeof(policy_hooks));
++    policy_provider = provider;
++    return TRUE;
++}
++
++Bool
++present_policy_request_query(uint32_t *abi_version, uint32_t *hooks_size)
++{
++    if (!abi_version || !hooks_size)
++        return FALSE;
++
++    *abi_version = PRESENT_POLICY_REQUEST_ABI_VERSION;
++    *hooks_size = (uint32_t) sizeof(PresentPolicyRequestHooksV1);
++    return TRUE;
++}
++
++Bool
++present_policy_request_register(const void *provider,
++                                const PresentPolicyRequestHooksV1 *hooks)
++{
++    if (!provider || provider != policy_provider || !hooks ||
++        hooks->abi_version != PRESENT_POLICY_REQUEST_ABI_VERSION ||
++        hooks->struct_size < (uint32_t) sizeof(PresentPolicyRequestHooksV1))
++        return FALSE;
++
++    memcpy(&request_hooks, hooks, sizeof(request_hooks));
++    return TRUE;
++}
++
++Bool
++present_policy_modifier_query(uint32_t *abi_version, uint32_t *hooks_size)
++{
++    if (!abi_version || !hooks_size)
++        return FALSE;
++    *abi_version = PRESENT_POLICY_MODIFIER_ABI_VERSION;
++    *hooks_size = (uint32_t) sizeof(PresentPolicyModifierHooksV1);
++    return TRUE;
++}
++
++Bool
++present_policy_modifier_register(const void *provider,
++                                 const PresentPolicyModifierHooksV1 *hooks)
++{
++    if (!provider || provider != policy_provider || !hooks ||
++        hooks->abi_version != PRESENT_POLICY_MODIFIER_ABI_VERSION ||
++        hooks->struct_size < (uint32_t) sizeof(PresentPolicyModifierHooksV1))
++        return FALSE;
++    memcpy(&modifier_hooks, hooks, sizeof(modifier_hooks));
++    return TRUE;
++}
++
++Bool
++present_policy_select_modifier(WindowPtr window, CARD32 format,
++                               CARD8 depth, CARD8 bpp,
++                               CARD32 num_window, const CARD64 *window_modifiers,
++                               CARD32 num_screen, const CARD64 *screen_modifiers,
++                               CARD64 *preferred)
++{
++    return policy_provider && window && preferred && modifier_hooks.select &&
++           modifier_hooks.select(window, format, depth, bpp,
++                                 num_window, window_modifiers,
++                                 num_screen, screen_modifiers, preferred);
++}
++
++Bool
++present_policy_force_copy(WindowPtr window)
++{
++    return policy_provider && window && request_hooks.force_copy &&
++           request_hooks.force_copy(window);
++}
++
++Bool
++present_policy_copy_defer_supported(void)
++{
++    return TRUE;
++}
++
++void
++present_policy_unregister(const void *provider)
++{
++    if (provider && provider == policy_provider)
++        present_policy_reset();
++}
++
++void
++present_policy_reset(void)
++{
++    policy_provider = NULL;
++    memset(&policy_hooks, 0, sizeof(policy_hooks));
++    memset(&request_hooks, 0, sizeof(request_hooks));
++    memset(&modifier_hooks, 0, sizeof(modifier_hooks));
++}
++
++PresentPolicyCopyAction
++present_policy_copy_action(WindowPtr window, RRCrtcPtr crtc, uint64_t crtc_msc)
++{
++    PresentPolicyCopyAction action;
++
++    if (!policy_provider || !policy_hooks.copy_action)
++        return PRESENT_POLICY_COPY_DEFAULT;
++
++    action = policy_hooks.copy_action(window, crtc, crtc_msc);
++    if (action != PRESENT_POLICY_COPY_EXECUTE &&
++        action != PRESENT_POLICY_COPY_SKIP &&
++        action != PRESENT_POLICY_COPY_DEFER)
++        return PRESENT_POLICY_COPY_DEFAULT;
++
++    return action;
++}
++
++PresentPolicyQueueMode
++present_policy_queue_mode(WindowPtr window,
++                          RRCrtcPtr crtc,
++                          uint64_t target_msc,
++                          uint64_t crtc_msc)
++{
++    PresentPolicyQueueMode mode;
++
++    if (!policy_provider || !policy_hooks.queue_mode)
++        return PRESENT_POLICY_QUEUE_DEFAULT;
++
++    mode = policy_hooks.queue_mode(window, crtc, target_msc, crtc_msc);
++    if (mode != PRESENT_POLICY_QUEUE_TARGET_MSC)
++        return PRESENT_POLICY_QUEUE_DEFAULT;
++
++    return mode;
++}
++
++PresentPolicyDriverCheckOrder
++present_policy_driver_check_order(WindowPtr window, RRCrtcPtr crtc)
++{
++    PresentPolicyDriverCheckOrder order;
++
++    if (!policy_provider || !policy_hooks.driver_check_order)
++        return PRESENT_POLICY_DRIVER_CHECK_DEFAULT;
++
++    order = policy_hooks.driver_check_order(window, crtc);
++    if (order != PRESENT_POLICY_DRIVER_CHECK_FIRST)
++        return PRESENT_POLICY_DRIVER_CHECK_DEFAULT;
++
++    return order;
++}
+diff --git a/present/present_priv.h b/present/present_priv.h
+--- a/present/present_priv.h
++++ b/present/present_priv.h
+@@ -89,6 +89,16 @@ struct present_vblank {
+     Bool                sync_flip;      /* do flip synchronous to vblank */
+     Bool                abort_flip;     /* aborting this flip */
+     PresentFlipReason   reason;         /* reason for which flip is not possible */
++    Bool                policy_copy_defer_allowed;
++    Bool                policy_copy_deferred;
++    Bool                policy_copy_deadline_valid;
++    Bool                policy_copy_skipped;
++    Bool                policy_copy_action_valid;
++    PresentPolicyCopyAction policy_copy_action;
++    uint64_t            policy_copy_deadline_msc;
++    uint64_t            policy_copy_last_msc;
++    CARD32              policy_copy_deadline_ms;
++    OsTimerPtr          policy_copy_timer;
+     Bool                has_suboptimal; /* whether client can support SuboptimalCopy mode */
+ };
+ 
+@@ -339,8 +349,39 @@ void
+ present_execute_copy(present_vblank_ptr vblank, uint64_t crtc_msc);
+ 
+ void
++present_execute_copy_cancel_timer(present_vblank_ptr vblank);
++
++void
++present_execute_copy_abort(present_vblank_ptr vblank);
++
++void
++present_execute_copy_flush(present_vblank_ptr vblank);
++
++void
++present_execute_copy_discard(present_vblank_ptr vblank, uint64_t ust,
++                             uint64_t crtc_msc);
++
++void
+ present_execute_post(present_vblank_ptr vblank, uint64_t ust, uint64_t crtc_msc);
+ 
++void
++present_policy_reset(void);
++
++Bool
++present_policy_force_copy(WindowPtr window);
++
++PresentPolicyCopyAction
++present_policy_copy_action(WindowPtr window, RRCrtcPtr crtc, uint64_t crtc_msc);
++
++PresentPolicyQueueMode
++present_policy_queue_mode(WindowPtr window,
++                          RRCrtcPtr crtc,
++                          uint64_t target_msc,
++                          uint64_t crtc_msc);
++
++PresentPolicyDriverCheckOrder
++present_policy_driver_check_order(WindowPtr window, RRCrtcPtr crtc);
++
+ /*
+  * present_fake.c
+  */
+diff --git a/present/present_scmd.c b/present/present_scmd.c
+--- a/present/present_scmd.c
++++ b/present/present_scmd.c
+@@ -58,6 +58,34 @@ present_flip_pending_pixmap(ScreenPtr sc
+ }
+ 
+ static Bool
++present_driver_check_flip(present_screen_priv_ptr screen_priv,
++                          RRCrtcPtr crtc,
++                          WindowPtr window,
++                          PixmapPtr pixmap,
++                          Bool sync_flip,
++                          PresentFlipReason *reason)
++{
++    if (screen_priv->info->version >= 1 && screen_priv->info->check_flip2) {
++        if (!(*screen_priv->info->check_flip2)(crtc, window, pixmap,
++                                               sync_flip, reason)) {
++            DebugPresent(("\td %08" PRIx32 " -> %08" PRIx32 "\n",
++                          window->drawable.id,
++                          pixmap ? pixmap->drawable.id : 0));
++            return FALSE;
++        }
++    } else if (screen_priv->info->check_flip &&
++               !(*screen_priv->info->check_flip)(crtc, window, pixmap,
++                                                  sync_flip)) {
++        DebugPresent(("\td %08" PRIx32 " -> %08" PRIx32 "\n",
++                      window->drawable.id,
++                      pixmap ? pixmap->drawable.id : 0));
++        return FALSE;
++    }
++
++    return TRUE;
++}
++
++static Bool
+ present_check_flip(RRCrtcPtr            crtc,
+                    WindowPtr            window,
+                    PixmapPtr            pixmap,
+@@ -71,13 +99,17 @@ present_check_flip(RRCrtcPtr
+     PixmapPtr                   window_pixmap;
+     WindowPtr                   root = screen->root;
+     present_screen_priv_ptr     screen_priv = present_screen_priv(screen);
++    PresentPolicyDriverCheckOrder check_order;
++    PresentFlipReason           driver_reason = PRESENT_FLIP_REASON_UNKNOWN;
++    Bool                        driver_checked = FALSE;
+ 
+-    if (crtc) {
+-       screen_priv = present_screen_priv(crtc->pScreen);
+-    }
+     if (reason)
+         *reason = PRESENT_FLIP_REASON_UNKNOWN;
+ 
++    /* Driver callbacks and this pending-pixmap lookup follow the target CRTC. */
++    if (crtc)
++        screen_priv = present_screen_priv(crtc->pScreen);
++
+     if (!screen_priv)
+         return FALSE;
+ 
+@@ -91,11 +123,23 @@ present_check_flip(RRCrtcPtr
+     if (!screen_priv->info->flip)
+         return FALSE;
+ 
++    check_order = present_policy_driver_check_order(window, crtc);
++    if (check_order == PRESENT_POLICY_DRIVER_CHECK_FIRST) {
++        driver_checked = TRUE;
++        if (!present_driver_check_flip(screen_priv, crtc, window, pixmap,
++                                       sync_flip, &driver_reason) &&
++            driver_reason != PRESENT_FLIP_REASON_BUFFER_FORMAT) {
++            if (reason)
++                *reason = driver_reason;
++            return FALSE;
++        }
++    }
++
+     /* Make sure the window hasn't been redirected with Composite */
+     window_pixmap = screen->GetWindowPixmap(window);
+     if (window_pixmap != screen->GetScreenPixmap(screen) &&
+         window_pixmap != screen_priv->flip_pixmap &&
+-        window_pixmap != present_flip_pending_pixmap(screen))
++        window_pixmap != present_flip_pending_pixmap(crtc->pScreen))
+         return FALSE;
+ 
+     /* Check for full-screen window */
+@@ -123,17 +167,16 @@ present_check_flip(RRCrtcPtr
+         return FALSE;
+     }
+ 
+-    /* Ask the driver for permission */
+-    if (screen_priv->info->version >= 1 && screen_priv->info->check_flip2) {
+-        if (!(*screen_priv->info->check_flip2) (crtc, window, pixmap, sync_flip, reason)) {
+-            DebugPresent(("\td %08" PRIx32 " -> %08" PRIx32 "\n", window->drawable.id, pixmap ? pixmap->drawable.id : 0));
+-            return FALSE;
+-        }
+-    } else if (screen_priv->info->check_flip) {
+-        if (!(*screen_priv->info->check_flip) (crtc, window, pixmap, sync_flip)) {
+-            DebugPresent(("\td %08" PRIx32 " -> %08" PRIx32 "\n", window->drawable.id, pixmap ? pixmap->drawable.id : 0));
++    if (check_order == PRESENT_POLICY_DRIVER_CHECK_FIRST) {
++        if (driver_reason == PRESENT_FLIP_REASON_BUFFER_FORMAT) {
++            if (reason)
++                *reason = driver_reason;
+             return FALSE;
+         }
++    } else if (!driver_checked &&
++               !present_driver_check_flip(screen_priv, crtc, window, pixmap,
++                                          sync_flip, reason)) {
++        return FALSE;
+     }
+ 
+     return TRUE;
+@@ -537,9 +580,13 @@ present_execute(present_vblank_ptr vblan
+     WindowPtr                   window = vblank->window;
+     ScreenPtr                   screen = window->drawable.pScreen;
+     present_screen_priv_ptr     screen_priv = present_screen_priv(screen);
+-    if (vblank && vblank->crtc) {
+-        screen_priv=present_screen_priv(vblank->crtc->pScreen);
++    if (vblank->policy_copy_deferred) {
++        present_execute_copy_cancel_timer(vblank);
++        if (vblank->crtc && !RRCrtcExists(screen, vblank->crtc))
++            vblank->crtc = NULL;
+     }
++    if (vblank->crtc)
++        screen_priv = present_screen_priv(vblank->crtc->pScreen);
+ 
+     if (present_execute_wait(vblank, crtc_msc))
+         return;
+@@ -664,6 +711,62 @@ present_scmd_update_window_crtc(WindowPt
+     window_priv->crtc = crtc;
+ }
+ 
++/* Keep one DDX event and watchdog while replacing only a retained image.
++ * The temporary record must already own all resources for the new request.
++ */
++static Bool
++present_scmd_copy_handoff(present_vblank_ptr pending, present_vblank_ptr newer,
++                          uint64_t ust, uint64_t crtc_msc)
++{
++    if (!newer->policy_copy_defer_allowed ||
++        !newer->policy_copy_action_valid ||
++        newer->policy_copy_action != PRESENT_POLICY_COPY_DEFER ||
++        !pending->policy_copy_deferred || !pending->queued ||
++        !pending->policy_copy_timer || newer->policy_copy_timer ||
++        pending->window != newer->window || pending->screen != newer->screen ||
++        pending->crtc != newer->crtc || !pending->crtc ||
++        !RRCrtcExists(pending->screen, pending->crtc) ||
++        !pending->pixmap || !newer->pixmap ||
++        pending->kind != PresentCompleteKindPixmap ||
++        newer->kind != PresentCompleteKindPixmap ||
++        pending->valid || newer->valid || pending->update || newer->update ||
++        pending->wait_fence || newer->wait_fence ||
++        pending->x_off || pending->y_off || newer->x_off || newer->y_off ||
++        pending->flip || newer->flip ||
++        pending->pixmap->drawable.width != newer->pixmap->drawable.width ||
++        pending->pixmap->drawable.height != newer->pixmap->drawable.height ||
++        newer->target_msc != crtc_msc ||
++        !msc_is_after(pending->policy_copy_deadline_msc, crtc_msc) ||
++        (INT32) (pending->policy_copy_deadline_ms - GetTimeInMillis()) <= 0)
++        return FALSE;
++
++    /* No scheduling fields move: event id, list links, timer (including its
++     * callback argument), and both fixed deadlines still belong to pending.
++     * Move each request's refs, identity and completion metadata together.
++     */
++#define SWAP_COPY_PAYLOAD(type, field) do { \
++        type saved = pending->field; \
++        pending->field = newer->field; \
++        newer->field = saved; \
++    } while (0)
++    SWAP_COPY_PAYLOAD(PixmapPtr, pixmap);
++    SWAP_COPY_PAYLOAD(uint32_t, serial);
++    SWAP_COPY_PAYLOAD(present_fence_ptr, idle_fence);
++    SWAP_COPY_PAYLOAD(uint64_t, msc_offset);
++    SWAP_COPY_PAYLOAD(present_notify_ptr, notifies);
++    SWAP_COPY_PAYLOAD(int, num_notifies);
++    SWAP_COPY_PAYLOAD(Bool, has_suboptimal);
++    SWAP_COPY_PAYLOAD(PresentFlipReason, reason);
++#undef SWAP_COPY_PAYLOAD
++
++    /* newer now owns only the superseded request. It has no timer or DDX
++     * event, so these existing paths cannot cancel the retained carrier.
++     */
++    present_vblank_scrap(newer);
++    present_execute_post(newer, ust, crtc_msc);
++    return TRUE;                /* newer was destroyed; caller must return. */
++}
++
+ static int
+ present_scmd_pixmap(WindowPtr window,
+                     PixmapPtr pixmap,
+@@ -686,6 +789,7 @@ present_scmd_pixmap(WindowPtr window,
+     uint64_t                    target_msc;
+     uint64_t                    crtc_msc = 0;
+     int                         ret;
++    Bool                        allow_defer;
+     present_vblank_ptr          vblank, tmp;
+     ScreenPtr                   screen = window->drawable.pScreen;
+     present_window_priv_ptr     window_priv = present_get_window_priv(window, TRUE);
+@@ -706,6 +810,8 @@ present_scmd_pixmap(WindowPtr window,
+             target_crtc = present_get_crtc(window);
+     }
+ 
++    if (target_crtc && !RRCrtcExists(screen, target_crtc))
++        target_crtc = NULL;
+     ret = present_get_ust_msc(screen, target_crtc, &ust, &crtc_msc);
+ 
+     present_scmd_update_window_crtc(window, target_crtc, crtc_msc);
+@@ -722,6 +828,45 @@ present_scmd_pixmap(WindowPtr window,
+                                         remainder,
+                                         options);
+ 
++    allow_defer = ret == Success && pixmap && !valid && !update &&
++                  !x_off && !y_off && !wait_fence &&
++                  pixmap->drawable.width == window->drawable.width &&
++                  pixmap->drawable.height == window->drawable.height &&
++                  (options & PresentOptionAsync) &&
++                  target_msc == crtc_msc && !divisor && !remainder &&
++                  target_crtc && RRCrtcExists(screen, target_crtc);
++
++    /* A previously scheduled future image must still appear after a later
++     * immediate request. Deferring that immediate request to its MSC could
++     * reverse their intended order; use ordinary Copy in this mixed case.
++     */
++    if (allow_defer) {
++        xorg_list_for_each_entry(vblank, &window_priv->vblank, window_list) {
++            if (vblank->pixmap && !vblank->policy_copy_deferred &&
++                (vblank->crtc != target_crtc ||
++                 msc_is_after(vblank->target_msc, crtc_msc))) {
++                allow_defer = FALSE;
++                break;
++            }
++        }
++    }
++
++    /* An incompatible/new CRTC request must see the old full update first;
++     * otherwise a later tail callback could overwrite a newer partial copy.
++     * NotifyMSC deliberately leaves the pending image alone.
++     */
++    if (pixmap) {
++        xorg_list_for_each_entry_safe(vblank, tmp, &window_priv->vblank, window_list) {
++            if (!vblank->policy_copy_deferred || !vblank->pixmap)
++                continue;
++            if (allow_defer && vblank->crtc == target_crtc &&
++                msc_is_after(vblank->policy_copy_deadline_msc, crtc_msc) &&
++                (INT32) (vblank->policy_copy_deadline_ms - GetTimeInMillis()) > 0)
++                continue;
++            present_execute_copy_flush(vblank);
++        }
++    }
++
+     /*
+      * Look for a matching presentation already on the list and
+      * don't bother doing the previous one if this one will overwrite it
+@@ -731,7 +876,7 @@ present_scmd_pixmap(WindowPtr window,
+     if (!update && pixmap) {
+         xorg_list_for_each_entry_safe(vblank, tmp, &window_priv->vblank, window_list) {
+ 
+-            if (!vblank->pixmap)
++            if (!vblank->pixmap || vblank->policy_copy_deferred)
+                 continue;
+ 
+             if (!vblank->queued)
+@@ -766,6 +911,38 @@ present_scmd_pixmap(WindowPtr window,
+     if (!vblank)
+         return BadAlloc;
+ 
++    vblank->policy_copy_defer_allowed = allow_defer && !vblank->flip &&
++                                         target_msc == crtc_msc;
++    if (pixmap) {
++        present_vblank_ptr pending, next;
++
++        xorg_list_for_each_entry_safe(pending, next, &window_priv->vblank, window_list) {
++            if (pending == vblank || !pending->policy_copy_deferred || !pending->pixmap)
++                continue;
++            if (!vblank->policy_copy_defer_allowed) {
++                present_execute_copy_flush(pending);
++                continue;
++            }
++            /* A changed provider/title or a fresh interval may now request
++             * ordinary Copy. Query exactly once, even if handoff fails.
++             */
++            if (!vblank->policy_copy_action_valid) {
++                vblank->policy_copy_action =
++                    present_policy_copy_action(window, target_crtc, crtc_msc);
++                vblank->policy_copy_action_valid = TRUE;
++            }
++            if (present_scmd_copy_handoff(pending, vblank, ust, crtc_msc))
++                return Success;
++            /* Only after successful allocation can this complete newer
++             * request replace the old tail. Keep both original deadlines.
++             */
++            vblank->policy_copy_deadline_valid = TRUE;
++            vblank->policy_copy_deadline_msc = pending->policy_copy_deadline_msc;
++            vblank->policy_copy_deadline_ms = pending->policy_copy_deadline_ms;
++            present_execute_copy_discard(pending, ust, crtc_msc);
++        }
++    }
++
+     vblank->event_id = ++present_scmd_event_id;
+ 
+     if (vblank->flip && vblank->sync_flip)
+@@ -854,6 +1031,7 @@ present_scmd_init_mode_hooks(present_scr
+ Bool
+ present_init(void)
+ {
++    present_policy_reset();
+     xorg_list_init(&present_exec_queue);
+     xorg_list_init(&present_flip_queue);
+     present_fake_queue_init();
+diff --git a/present/present.c b/present/present.c
+--- a/present/present.c
++++ b/present/present.c
+@@ -240,6 +240,13 @@ present_pixmap(WindowPtr window,
+     ScreenPtr                   screen = window->drawable.pScreen;
+     present_screen_priv_ptr     screen_priv = present_screen_priv(screen);
+ 
++    /* Apply to the local request before backend dispatch. The ordinary Copy
++     * path owns scheduling, fences, idle and completion notifications.
++     * NotifyMSC has no pixmap and must not consult request policy.
++     */
++    if (pixmap && present_policy_force_copy(window))
++        options |= PresentOptionCopy;
++
+     return screen_priv->present_pixmap(window,
+                                        pixmap,
+                                        serial,
+diff --git a/present/present_screen.c b/present/present_screen.c
+--- a/present/present_screen.c
++++ b/present/present_screen.c
+@@ -77,7 +77,10 @@ present_free_window_vblank(WindowPtr win
+     present_vblank_ptr          vblank, tmp;
+ 
+     xorg_list_for_each_entry_safe(vblank, tmp, &window_priv->vblank, window_list) {
+-        screen_priv->abort_vblank(window->drawable.pScreen, window, vblank->crtc, vblank->event_id, vblank->target_msc);
++        if (vblank->policy_copy_deferred)
++            present_execute_copy_abort(vblank);
++        else
++            screen_priv->abort_vblank(window->drawable.pScreen, window, vblank->crtc, vblank->event_id, vblank->target_msc);
+         present_vblank_destroy(vblank);
+     }
+ }
+diff --git a/present/present_vblank.c b/present/present_vblank.c
+--- a/present/present_vblank.c
++++ b/present/present_vblank.c
+@@ -183,6 +183,7 @@ present_vblank_create(WindowPtr window,
+ void
+ present_vblank_scrap(present_vblank_ptr vblank)
+ {
++    present_execute_copy_cancel_timer(vblank);
+     DebugPresent(("\tx %" PRIu64 " %p %" PRIu64 " %" PRIu64 ": %08" PRIx32 " -> %08" PRIx32 " (crtc %p)\n",
+                   vblank->event_id, vblank, vblank->exec_msc, vblank->target_msc,
+                   vblank->pixmap->drawable.id, vblank->window->drawable.id,
+@@ -200,6 +201,7 @@ present_vblank_scrap(present_vblank_ptr
+ void
+ present_vblank_destroy(present_vblank_ptr vblank)
+ {
++    present_execute_copy_cancel_timer(vblank);
+     /* Remove vblank from window and screen lists */
+     xorg_list_del(&vblank->window_list);
+     /* Also make sure vblank is removed from event queue (wnmd) */
+diff --git a/dri3/dri3_screen.c b/dri3/dri3_screen.c
+--- a/dri3/dri3_screen.c
++++ b/dri3/dri3_screen.c
+@@ -27,6 +27,9 @@
+ #include <randrstr.h>
+ #include <drm_fourcc.h>
+ #include <unistd.h>
++#ifdef PRESENT
++#include "../present/present.h"
++#endif
+ 
+ int
+ dri3_open(ClientPtr client, ScreenPtr screen, RRProviderPtr provider, int *fd)
+@@ -208,6 +211,67 @@ cache_formats_and_modifiers(ScreenPtr sc
+     return Success;
+ }
+ 
++#ifdef PRESENT
++/* The cache stays immutable. Repartition only complete, request-owned arrays
++ * after every check/allocation succeeds, retaining all advertised candidates.
++ */
++static void
++dri3_apply_modifier_policy(WindowPtr window, CARD32 format,
++                           CARD8 depth, CARD8 bpp,
++                           CARD32 *num_window, CARD64 **window_modifiers,
++                           CARD32 *num_screen, CARD64 **screen_modifiers)
++{
++    CARD64 preferred = DRM_FORMAT_MOD_INVALID;
++    CARD64 *new_window, *new_screen = NULL;
++    uint64_t total = (uint64_t) *num_window + *num_screen;
++    CARD32 i, next = 0, matches = 0;
++
++    if (!total || total > UINT32_MAX || total > SIZE_MAX / sizeof(CARD64) ||
++        (*num_window && !*window_modifiers) ||
++        (*num_screen && !*screen_modifiers) ||
++        !present_policy_select_modifier(window, format, depth, bpp,
++                                        *num_window, *window_modifiers,
++                                        *num_screen, *screen_modifiers,
++                                        &preferred) ||
++        preferred == DRM_FORMAT_MOD_INVALID)
++        return;
++
++    for (i = 0; i < *num_window; i++)
++        matches += (*window_modifiers)[i] == preferred;
++    for (i = 0; i < *num_screen; i++)
++        matches += (*screen_modifiers)[i] == preferred;
++    if (matches != 1 ||
++        (*num_window == 1 && (*window_modifiers)[0] == preferred))
++        return;
++
++    new_window = malloc(sizeof(CARD64));
++    if (!new_window)
++        return;
++    if (total > 1) {
++        new_screen = malloc((size_t) (total - 1) * sizeof(CARD64));
++        if (!new_screen) {
++            free(new_window);
++            return;
++        }
++    }
++    new_window[0] = preferred;
++    for (i = 0; i < *num_window; i++) {
++        if ((*window_modifiers)[i] != preferred)
++            new_screen[next++] = (*window_modifiers)[i];
++    }
++    for (i = 0; i < *num_screen; i++) {
++        if ((*screen_modifiers)[i] != preferred)
++            new_screen[next++] = (*screen_modifiers)[i];
++    }
++    free(*window_modifiers);
++    free(*screen_modifiers);
++    *window_modifiers = new_window;
++    *screen_modifiers = new_screen;
++    *num_window = 1;
++    *num_screen = next;
++}
++#endif
++
+ int
+ dri3_get_supported_modifiers(ScreenPtr screen, DrawablePtr drawable,
+                              CARD8 depth, CARD8 bpp,
+@@ -300,6 +364,13 @@ dri3_get_supported_modifiers(ScreenPtr s
+ 
+     *intersect_modifiers = intersect_mods;
+     *screen_modifiers = screen_mods;
++#ifdef PRESENT
++    if (drawable && drawable->type == DRAWABLE_WINDOW &&
++        drawable->pScreen == screen)
++        dri3_apply_modifier_policy((WindowPtr) drawable, format, depth, bpp,
++                                   num_intersect_modifiers, intersect_modifiers,
++                                   num_screen_modifiers, screen_modifiers);
++#endif
+     free(drawable_mods);
+ 
+     return Success;
