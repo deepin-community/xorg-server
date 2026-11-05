@@ -1,3 +1,12 @@
+xorg-server (2:21.1.16-1deepin15) unstable; urgency=medium
+
+  * fix(cve): CVE-2026-93524 (unknown) - xkb: fix CheckKeySyms
+    overwriting request-range symsPerKey entries   Upstream:
+    https://gitlab.freedesktop.org/xorg/xserver/-
+    /commit/927ee1282d21550807619521bee909ef62ed0571
+
+ -- deepin-ci-robot <packages@deepin.org>  Thu, 05 Nov 2026 13:52:07 +0800
+
 xorg-server (2:21.1.16-1deepin14) unstable; urgency=medium
 
   * Add optional versioned Present policy hooks for Copy scheduling,
