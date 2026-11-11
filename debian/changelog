@@ -12,6 +12,12 @@ xorg-server (2:21.1.16-1deepin15) unstable; urgency=medium
     in PutImage   Upstream:
     https://gitlab.freedesktop.org/xorg/xserver/-
     /commit/1376ac1f0edad6bd44dc6db3b4e49370a60d8e2f
+  * fix(cve): CVE-2026-109091 (unknown) - xfree86: bound EDID DS_RANGES
+    against hsync/vrefresh array size   Upstream:
+    https://gitlab.freedesktop.org/xorg/xserver/-
+    /commit/d88f0f7fdb2834c24feca63c0af5f46a57f4a04c.patch,https://gitla
+    b.freedesktop.org/xorg/xserver/-
+    /commit/56e4ab6e8d94222480c8d7a28f530334059e3ab7.patch
 
  -- deepin-ci-robot <packages@deepin.org>  Thu, 05 Nov 2026 13:52:07 +0800
 
