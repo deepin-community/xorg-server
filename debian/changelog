@@ -26,6 +26,10 @@ xorg-server (2:21.1.16-1deepin15) unstable; urgency=medium
     before writing   Upstream:
     https://gitlab.freedesktop.org/xorg/xserver/-
     /commit/99ce069ae814b39048543062e073320f14723ee0.patch
+  * fix(cve): CVE-2026-109092 (unknown) - Xv: prevent overflow in
+    shared-memory bounds check   Upstream:
+    https://gitlab.freedesktop.org/xorg/xserver/-
+    /commit/a4d7800f0f56469a082e3755bfa6b148c707075c.patch
 
  -- deepin-ci-robot <packages@deepin.org>  Thu, 05 Nov 2026 13:52:07 +0800
 
