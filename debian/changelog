@@ -34,6 +34,10 @@ xorg-server (2:21.1.16-1deepin15) unstable; urgency=medium
     client ID request size   Upstream:
     https://gitlab.freedesktop.org/xorg/xserver/-
     /commit/a3899d75e180d73f2971af2a402e6fdf19c0339c
+  * fix(cve): CVE-2026-109094 (unknown) - XRes: prevent overflow in
+    resource bytes swap path   Upstream:
+    https://gitlab.freedesktop.org/xorg/xserver/-
+    /commit/a59678e491a762e504829cac069cf37f4ccafe0d.patch
 
  -- deepin-ci-robot <packages@deepin.org>  Thu, 05 Nov 2026 13:52:07 +0800
 
