@@ -1,3 +1,11 @@
+xorg-server (2:21.1.16-1deepin16) unstable; urgency=medium
+
+  * fix(composite): Avoid stale backgrounds before the first draw of
+    eligible Manual ARGB popups by initializing new backings to transparent.
+    Enable the fix by default (PMS: BUG-373551).
+
+ -- 胡力文 <151860361+TudouXiang@users.noreply.github.com>  Fri, 13 Nov 2026 18:16:35 +0800
+
 xorg-server (2:21.1.16-1deepin15) unstable; urgency=medium
 
   * fix(cve): CVE-2026-93524 (unknown) - xkb: fix CheckKeySyms
