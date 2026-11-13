@@ -1,6 +1,6 @@
 Description: Initialize eligible Manual popup backings transparently
- With XORG_POPUP_INITIAL_CONTENT=1, initialize new ARGB popup backing
- pixmaps to transparent before publication. Preserve stock initialization
+ Initialize new eligible ARGB popup backing pixmaps to transparent before
+ publication. Preserve stock initialization
  for late redirection and overlapping same-depth Background=None sources.
  Reuse native bit-gravity and CopyWindow handling when resizing.
 Author: 胡力文 <151860361+TudouXiang@users.noreply.github.com>
@@ -28,7 +28,7 @@ Last-Update: 2026-11-12
          FreeResource(ccw->id, RT_NONE);
          status = BadAlloc;
      }
-@@ -555,8 +556,71 @@
+@@ -555,8 +556,69 @@
      return Success;
  }
  
@@ -72,12 +72,10 @@ Last-Update: 2026-11-12
 +static Bool
 +compShouldClearPopup(WindowPtr pWin, PictFormatPtr format, PixmapPtr pixmap)
 +{
-+    const char *enabled = getenv("XORG_POPUP_INITIAL_CONTENT");
 +    BoxPtr root;
 +    CompPopupArea area;
 +
-+    if (!enabled || strcmp(enabled, "1") ||
-+        GetCompWindow(pWin)->update != CompositeRedirectManual ||
++    if (GetCompWindow(pWin)->update != CompositeRedirectManual ||
 +        !pWin->overrideRedirect || pWin->backgroundState != None || pWin->borderWidth ||
 +        pWin->parent != pWin->drawable.pScreen->root || pWin->firstChild ||
 +        !format || format->type != PictTypeDirect || !format->direct.alphaMask ||
@@ -101,7 +99,7 @@ Last-Update: 2026-11-12
  {
      ScreenPtr pScreen = pWin->drawable.pScreen;
      WindowPtr pParent = pWin->parent;
-@@ -594,6 +658,20 @@
+@@ -594,6 +656,20 @@
          XID inferiors = IncludeInferiors;
          int error;
  
@@ -122,7 +120,7 @@ Last-Update: 2026-11-12
          PicturePtr pSrcPicture = CreatePicture(None,
                                                 &pParent->drawable,
                                                 pSrcFormat,
-@@ -624,14 +702,14 @@
+@@ -624,14 +700,14 @@
  }
  
  Bool
@@ -139,7 +137,7 @@ Last-Update: 2026-11-12
      CompWindowPtr cw = GetCompWindow(pWin);
      Bool status;
  
-@@ -723,7 +801,7 @@
+@@ -723,7 +799,7 @@
      pix_w = w + (bw << 1);
      pix_h = h + (bw << 1);
      if (pix_w != pOld->drawable.width || pix_h != pOld->drawable.height) {
