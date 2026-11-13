@@ -1,0 +1,217 @@
+Description: Initialize eligible Manual popup backings transparently
+ With XORG_POPUP_INITIAL_CONTENT=1, initialize new ARGB popup backing
+ pixmaps to transparent before publication. Preserve stock initialization
+ for late redirection and overlapping same-depth Background=None sources.
+ Reuse native bit-gravity and CopyWindow handling when resizing.
+Author: 胡力文 <151860361+TudouXiang@users.noreply.github.com>
+Origin: local
+Bug: https://github.com/deepin-community/xorg-server/pull/48
+Forwarded: not-needed
+Last-Update: 2026-11-12
+---
+--- a/composite/compalloc.c
++++ b/composite/compalloc.c
+@@ -48,6 +48,7 @@
+ #include "compint.h"
+ #include "damagestr.h"
+ #include "property.h"
++#include "propertyst.h"
+ 
+ #include <X11/Xatom.h>
+ 
+@@ -244,7 +245,7 @@
+             anyMarked = compMarkWindows(pWin, &pLayerWin);
+     }
+ 
+-    if (!compCheckRedirect(pWin)) {
++    if (!compCheckRedirect(pWin, FALSE)) {
+         FreeResource(ccw->id, RT_NONE);
+         status = BadAlloc;
+     }
+@@ -555,8 +556,71 @@
+     return Success;
+ }
+ 
++static Bool
++compHasViewableTransient(WindowPtr pWin)
++{
++    PropertyPtr prop;
++    WindowPtr host;
++    XID id;
++
++    if (dixLookupProperty(&prop, pWin, XA_WM_TRANSIENT_FOR, serverClient,
++                          DixReadAccess) != Success || !prop ||
++        prop->type != XA_WINDOW || prop->format != 32 || prop->size != 1)
++        return FALSE;
++    id = *(CARD32 *) prop->data;
++    return id != pWin->drawable.id &&
++        CLIENT_ID(id) == CLIENT_ID(pWin->drawable.id) &&
++        dixLookupWindow(&host, id, serverClient, DixReadAccess) == Success &&
++        host->viewable;
++}
++
++typedef struct {
++    WindowPtr popup;
++    BoxRec box;
++} CompPopupArea;
++
++static int
++compFindRetainedPixels(WindowPtr pWin, void *data)
++{
++    CompPopupArea *area = data;
++
++    if (pWin == area->popup || !pWin->viewable ||
++        pWin->redirectDraw == RedirectDrawManual)
++        return WT_DONTWALKCHILDREN;
++    if (pWin->drawable.depth == area->popup->drawable.depth &&
++        RegionContainsRect(&pWin->borderSize, &area->box) != rgnOUT)
++        return WT_STOPWALKING;
++    return WT_WALKCHILDREN;
++}
++
++static Bool
++compShouldClearPopup(WindowPtr pWin, PictFormatPtr format, PixmapPtr pixmap)
++{
++    const char *enabled = getenv("XORG_POPUP_INITIAL_CONTENT");
++    BoxPtr root;
++    CompPopupArea area;
++
++    if (!enabled || strcmp(enabled, "1") ||
++        GetCompWindow(pWin)->update != CompositeRedirectManual ||
++        !pWin->overrideRedirect || pWin->backgroundState != None || pWin->borderWidth ||
++        pWin->parent != pWin->drawable.pScreen->root || pWin->firstChild ||
++        !format || format->type != PictTypeDirect || !format->direct.alphaMask ||
++        !compHasViewableTransient(pWin))
++        return FALSE;
++    /* Clip before narrowing coordinates to BoxRec on large resizes. */
++    root = RegionExtents(&pWin->parent->winSize);
++    area.popup = pWin;
++    area.box = (BoxRec) {
++        max(pixmap->screen_x, root->x1), max(pixmap->screen_y, root->y1),
++        min(pixmap->screen_x + pixmap->drawable.width, root->x2),
++        min(pixmap->screen_y + pixmap->drawable.height, root->y2)
++    };
++    return area.box.x1 >= area.box.x2 || area.box.y1 >= area.box.y2 ||
++        TraverseTree(pWin->parent, compFindRetainedPixels, &area) != WT_STOPWALKING;
++}
++
+ static PixmapPtr
+-compNewPixmap(WindowPtr pWin, int x, int y, int w, int h)
++compNewPixmap(WindowPtr pWin, int x, int y, int w, int h, Bool allowPopupInit)
+ {
+     ScreenPtr pScreen = pWin->drawable.pScreen;
+     WindowPtr pParent = pWin->parent;
+@@ -594,6 +658,20 @@
+         XID inferiors = IncludeInferiors;
+         int error;
+ 
++        if (allowPopupInit && compShouldClearPopup(pWin, pDstFormat, pPixmap)) {
++            GCPtr pGC = GetScratchGC(pWin->drawable.depth, pScreen);
++            xRectangle rect = {0, 0, w, h};
++
++            if (!pGC) {
++                (*pScreen->DestroyPixmap) (pPixmap);
++                return NULL;
++            }
++            ValidateGC(&pPixmap->drawable, pGC);
++            (*pGC->ops->PolyFillRect) (&pPixmap->drawable, pGC, 1, &rect);
++            FreeScratchGC(pGC);
++            return pPixmap;
++        }
++
+         PicturePtr pSrcPicture = CreatePicture(None,
+                                                &pParent->drawable,
+                                                pSrcFormat,
+@@ -624,14 +702,14 @@
+ }
+ 
+ Bool
+-compAllocPixmap(WindowPtr pWin)
++compAllocPixmap(WindowPtr pWin, Bool newMap)
+ {
+     int bw = (int) pWin->borderWidth;
+     int x = pWin->drawable.x - bw;
+     int y = pWin->drawable.y - bw;
+     int w = pWin->drawable.width + (bw << 1);
+     int h = pWin->drawable.height + (bw << 1);
+-    PixmapPtr pPixmap = compNewPixmap(pWin, x, y, w, h);
++    PixmapPtr pPixmap = compNewPixmap(pWin, x, y, w, h, newMap);
+     CompWindowPtr cw = GetCompWindow(pWin);
+     Bool status;
+ 
+@@ -723,7 +801,7 @@
+     pix_w = w + (bw << 1);
+     pix_h = h + (bw << 1);
+     if (pix_w != pOld->drawable.width || pix_h != pOld->drawable.height) {
+-        pNew = compNewPixmap(pWin, pix_x, pix_y, pix_w, pix_h);
++        pNew = compNewPixmap(pWin, pix_x, pix_y, pix_w, pix_h, TRUE);
+         if (!pNew)
+             return FALSE;
+         cw->pOldPixmap = pOld;
+--- a/composite/compint.h
++++ b/composite/compint.h
+@@ -225,7 +225,7 @@
+  compUnredirectOneSubwindow(WindowPtr pParent, WindowPtr pWin);
+ 
+ Bool
+- compAllocPixmap(WindowPtr pWin);
++ compAllocPixmap(WindowPtr pWin, Bool newMap);
+ 
+ void
+  compSetParentPixmap(WindowPtr pWin);
+@@ -281,7 +281,7 @@
+  compSetPixmap(WindowPtr pWin, PixmapPtr pPixmap, int bw);
+ 
+ Bool
+- compCheckRedirect(WindowPtr pWin);
++ compCheckRedirect(WindowPtr pWin, Bool newMap);
+ 
+ Bool
+  compPositionWindow(WindowPtr pWin, int x, int y);
+--- a/composite/compwindow.c
++++ b/composite/compwindow.c
+@@ -153,7 +153,7 @@
+ }
+ 
+ Bool
+-compCheckRedirect(WindowPtr pWin)
++compCheckRedirect(WindowPtr pWin, Bool newMap)
+ {
+     CompWindowPtr cw = GetCompWindow(pWin);
+     CompScreenPtr cs = GetCompScreen(pWin->drawable.pScreen);
+@@ -171,7 +171,7 @@
+ 
+     if (should != (pWin->redirectDraw != RedirectDrawNone)) {
+         if (should)
+-            return compAllocPixmap(pWin);
++            return compAllocPixmap(pWin, newMap);
+         else {
+             ScreenPtr pScreen = pWin->drawable.pScreen;
+             PixmapPtr pPixmap = (*pScreen->GetWindowPixmap) (pWin);
+@@ -271,7 +271,7 @@
+     Bool ret = TRUE;
+ 
+     pScreen->RealizeWindow = cs->RealizeWindow;
+-    compCheckRedirect(pWin);
++    compCheckRedirect(pWin, TRUE);
+     if (!(*pScreen->RealizeWindow) (pWin))
+         ret = FALSE;
+     cs->RealizeWindow = pScreen->RealizeWindow;
+@@ -288,7 +288,7 @@
+     Bool ret = TRUE;
+ 
+     pScreen->UnrealizeWindow = cs->UnrealizeWindow;
+-    compCheckRedirect(pWin);
++    compCheckRedirect(pWin, FALSE);
+     if (!(*pScreen->UnrealizeWindow) (pWin))
+         ret = FALSE;
+     cs->UnrealizeWindow = pScreen->UnrealizeWindow;
+@@ -462,7 +462,7 @@
+      * Allocate any necessary redirect pixmap
+      * (this actually should never be true; pWin is always unmapped)
+      */
+-    compCheckRedirect(pWin);
++    compCheckRedirect(pWin, FALSE);
+ 
+     /*
+      * Reset pixmap pointers as appropriate
