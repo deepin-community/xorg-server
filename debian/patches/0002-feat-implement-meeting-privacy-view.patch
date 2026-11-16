@@ -1,0 +1,1745 @@
+From: 标准-窗管-代码开发bot <bot@uniontech.com>
+Date: Mon, 16 Nov 2026 12:00:00 +0800
+Subject: [PATCH] feat: meeting privacy view for non window manager clients
+
+The window manager switches the view by setting the root property
+_DEEPIN_NET_MIRROR_MODE (32 bit, 0 = off, non zero = the mirror policy that
+is active, the value the desktop already publishes for mirror mode).  While
+it is on, every client but the window manager sees a single screen:
+
+1. the view is the primary CRTC rectangle anchored at the origin; pixel reads
+   of the root window, the screen pixmap and the overlay window are rebuilt
+   from the primary and the first non primary CRTC rectangle:
+   map(p) = secondary + p, black where the view has no counterpart, and a
+   single screen view is that screen itself;
+2. XYPixmap reads of a screen level drawable, CopyArea out of one, naming the
+   root pixmap and exporting a screen pixmap through DRI3 fail with BadMatch;
+   a window keeps its own pixels, planes included;
+3. a window may only be read by the client that owns it;
+4. RandR and Xinerama enumerate exactly one screen, report it at the origin
+   and configuration requests fail with BadAccess.
+
+Log: add the meeting privacy view used by the desktop meeting mode
+
+Influence:
+1. Verify a normal client only enumerates one output with the primary geometry
+2. Verify a normal client reads the mirrored primary screen content
+3. Verify the window manager is not affected
+4. Verify the view is restored when the property is removed
+5. Verify a normal client cannot read a window of another client
+6. Run debian/tests/meetingprivacy, it needs only Xvfb and xrandr
+
+feat: 为普通客户端提供会议隐私单屏视图
+
+1. 由 root 属性 _DEEPIN_NET_MIRROR_MODE 开关（0=关，非零=当前镜像策略），
+   与桌面已发布的镜像模式开关一致；单屏视图以主 CRTC 矩形为原点。
+2. 非窗口管理器客户端读取屏幕像素时按主屏/第一副屏矩形重映射，无对应区
+   域填黑；只重映射屏幕级 drawable，窗口保持自己的像素；单屏时视图即本屏。
+3. 屏幕级 drawable 的 XYPixmap 抓图、屏幕内 CopyArea/CopyPlane、root pixmap
+   命名、DRI3 屏幕 pixmap 导出、读取他人窗口全部拒绝；窗口自身像素（含
+   XYPixmap）不受影响。
+4. RandR 与 Xinerama（含 PanoramiX 路径）只枚举一个屏幕并归零到原点，其余
+   CRTC/output 在所有查询中隐藏，RandR 配置类请求返回 BadAccess（WM-1025）。
+5. 多屏 GetImage/CopyArea/CopyPlane 路径 fail-closed，逐屏且对所有 drawable
+   生效；窗口级读取仍保留截图保护打码。
+
+Log: 新增会议隐私模式所需的单屏视图
+
+Influence:
+1. 验证普通客户端只枚举到一个输出，几何为主屏几何且位于原点。
+2. 验证普通客户端读到的是副屏镜像内容（单屏时为本屏内容）。
+3. 验证窗口管理器视图保持不变。
+4. 验证关闭属性后视图恢复。
+5. 验证普通客户端无法读取其他客户端的窗口。
+6. 执行 debian/tests/meetingprivacy，只需 Xvfb 与 xrandr。
+Index: xorg-server/Xext/panoramiX.c
+===================================================================
+--- xorg-server.orig/Xext/panoramiX.c
++++ xorg-server/Xext/panoramiX.c
+@@ -60,6 +60,8 @@
+ #endif
+ #include "extinit.h"
+ #include "protocol-versions.h"
++#include "../dix/dispatch.h"
++#include "randrstr.h"
+ 
+ #ifdef GLXPROXY
+ extern VisualPtr glxMatchVisual(ScreenPtr pScreen,
+@@ -965,7 +967,8 @@
+ 
+     rep = (xPanoramiXGetScreenCountReply) {
+         .type = X_Reply,
+-        .ScreenCount = PanoramiXNumScreens,
++        .ScreenCount = MeetingPrivacyViewActive(client, screenInfo.screens[0])
++            ? 1 : PanoramiXNumScreens,
+         .sequenceNumber = client->sequence,
+         .length = 0,
+         .window = stuff->window
+@@ -986,11 +989,26 @@
+     WindowPtr pWin;
+     xPanoramiXGetScreenSizeReply rep;
+     int rc;
++    int privacyWidth, privacyHeight;
+ 
+     REQUEST_SIZE_MATCH(xPanoramiXGetScreenSizeReq);
+ 
+     if (stuff->screen >= PanoramiXNumScreens)
+         return BadMatch;
++
++    privacyWidth = screenInfo.screens[stuff->screen]->width;
++    privacyHeight = screenInfo.screens[stuff->screen]->height;
++
++    if (MeetingPrivacyViewActive(client, screenInfo.screens[0])) {
++        BoxRec box;
++
++        if (stuff->screen > 0)
++            return BadMatch;
++        if (!RRPrivacyViewBox(screenInfo.screens[0], &box))
++            return BadMatch;
++        privacyWidth = box.x2 - box.x1;
++        privacyHeight = box.y2 - box.y1;
++    }
+ 
+     rc = dixLookupWindow(&pWin, stuff->window, client, DixGetAttrAccess);
+     if (rc != Success)
+@@ -1001,8 +1019,8 @@
+         .sequenceNumber = client->sequence,
+         .length = 0,
+     /* screen dimensions */
+-        .width = screenInfo.screens[stuff->screen]->width,
+-        .height = screenInfo.screens[stuff->screen]->height,
++        .width = privacyWidth,
++        .height = privacyHeight,
+         .window = stuff->window,
+         .screen = stuff->screen
+     };
+@@ -1052,15 +1070,27 @@
+ {
+     /* REQUEST(xXineramaQueryScreensReq); */
+     CARD32 number = (noPanoramiXExtension) ? 0 : PanoramiXNumScreens;
+-    xXineramaQueryScreensReply rep = {
++    xXineramaQueryScreensReply rep;
++    Bool privacyOnly = FALSE;
++    BoxRec privacyBox;
++
++    REQUEST_SIZE_MATCH(xXineramaQueryScreensReq);
++
++    if (!noPanoramiXExtension &&
++        MeetingPrivacyViewActive(client, screenInfo.screens[0])) {
++        if (!RRPrivacyViewBox(screenInfo.screens[0], &privacyBox))
++            return BadMatch;
++        privacyOnly = TRUE;
++        number = 1;
++    }
++
++    rep = (xXineramaQueryScreensReply) {
+         .type = X_Reply,
+         .sequenceNumber = client->sequence,
+         .length = bytes_to_int32(number * sz_XineramaScreenInfo),
+         .number = number
+     };
+ 
+-    REQUEST_SIZE_MATCH(xXineramaQueryScreensReq);
+-
+     if (client->swapped) {
+         swaps(&rep.sequenceNumber);
+         swapl(&rep.length);
+@@ -1068,7 +1098,22 @@
+     }
+     WriteToClient(client, sizeof(xXineramaQueryScreensReply), &rep);
+ 
+-    if (!noPanoramiXExtension) {
++    if (privacyOnly) {
++        xXineramaScreenInfo scratch;
++
++        scratch.x_org = privacyBox.x1;
++        scratch.y_org = privacyBox.y1;
++        scratch.width = privacyBox.x2 - privacyBox.x1;
++        scratch.height = privacyBox.y2 - privacyBox.y1;
++        if (client->swapped) {
++            swaps(&scratch.x_org);
++            swaps(&scratch.y_org);
++            swaps(&scratch.width);
++            swaps(&scratch.height);
++        }
++        WriteToClient(client, sz_XineramaScreenInfo, &scratch);
++    }
++    else if (!noPanoramiXExtension) {
+         xXineramaScreenInfo scratch;
+         int i;
+ 
+Index: xorg-server/Xext/panoramiXprocs.c
+===================================================================
+--- xorg-server.orig/Xext/panoramiXprocs.c
++++ xorg-server/Xext/panoramiXprocs.c
+@@ -46,6 +46,7 @@
+ #include "panoramiXsrv.h"
+ #include "resource.h"
+ #include "panoramiXh.h"
++#include "../dix/dispatch.h"
+ 
+ #define XINERAMA_IMAGE_BUFSIZE (256*1024)
+ #define INPUTONLY_LEGAL_MASK (CWWinGravity | CWEventMask | \
+@@ -1087,6 +1088,19 @@
+     if ((src->type == XRT_WINDOW) && src->u.win.root)
+         srcIsRoot = TRUE;
+ 
++    /* The multi screen path cannot build the view, refuse. */
++    FOR_NSCREENS(j) {
++        DrawablePtr privacySrc;
++
++        result = dixLookupDrawable(&privacySrc, src->info[j].id, client, 0,
++                                   DixReadAccess);
++        if (result != Success)
++            return result;
++        result = MeetingPrivacyCopyError(client, privacySrc);
++        if (result != Success)
++            return result;
++    }
++
+     srcx = stuff->srcX;
+     srcy = stuff->srcY;
+     dstx = stuff->dstX;
+@@ -1299,6 +1313,19 @@
+     if ((src->type == XRT_WINDOW) && src->u.win.root)
+         srcIsRoot = TRUE;
+ 
++    /* The multi screen path cannot build the view, refuse. */
++    FOR_NSCREENS(j) {
++        DrawablePtr privacySrc;
++
++        rc = dixLookupDrawable(&privacySrc, src->info[j].id, client, 0,
++                               DixReadAccess);
++        if (rc != Success)
++            return rc;
++        rc = MeetingPrivacyCopyError(client, privacySrc);
++        if (rc != Success)
++            return rc;
++    }
++
+     srcx = stuff->srcX;
+     srcy = stuff->srcY;
+     dstx = stuff->dstX;
+@@ -1976,6 +2003,11 @@
+     if (!((WindowPtr) pDraw)->realized)
+         return BadMatch;
+ 
++    /* The multi screen path cannot build the view, refuse. */
++    rc = MeetingPrivacyCopyError(client, pDraw);
++    if (rc != Success)
++        return rc;
++
+     x = stuff->x;
+     y = stuff->y;
+     w = stuff->width;
+Index: xorg-server/Xext/shm.c
+===================================================================
+--- xorg-server.orig/Xext/shm.c
++++ xorg-server/Xext/shm.c
+@@ -623,6 +623,7 @@
+     ShmDescPtr shmdesc;
+     VisualID visual = None;
+     RegionPtr pVisibleRegion = NULL;
++    Bool privacyView, isWindowManager, privacyScreenView;
+     int rc;
+ 
+     REQUEST(xShmGetImageReq);
+@@ -636,7 +637,15 @@
+     if (rc != Success)
+         return rc;
+ 
+-    Bool isWindowManager = IsClientWindowManager(client, pDraw->pScreen);
++    privacyView = MeetingPrivacyViewActive(client, pDraw->pScreen);
++    isWindowManager = IsClientWindowManager(client, pDraw->pScreen);
++    privacyScreenView = privacyView && MeetingPrivacyIsScreenLevel(pDraw);
++
++    if (privacyView) {
++        rc = MeetingPrivacyImageError(client, pDraw, stuff->format);
++        if (rc != Success)
++            return rc;
++    }
+ 
+     VERIFY_SHMPTR(stuff->shmseg, stuff->offset, TRUE, shmdesc, client);
+     if (pDraw->type == DRAWABLE_WINDOW) {
+@@ -703,6 +712,10 @@
+                     PixmapBytePad(stuff->width, pDraw->depth), pDraw,
+                     stuff->x, stuff->y, stuff->width, stuff->height,
+                     stuff->format, shmdesc->addr + stuff->offset);
++        if (privacyScreenView)
++            MeetingPrivacyFillScreenView(pDraw, stuff->x, stuff->y,
++                                         stuff->width, stuff->height,
++                                         shmdesc->addr + stuff->offset);
+     }
+     else {
+ 
+@@ -731,7 +744,7 @@
+         swapl(&xgi.size);
+     }
+ 
+-    if (!isWindowManager) {
++    if (!isWindowManager && !privacyScreenView) {
+         int depth = stuff->format == ZPixmap ? pDraw->depth : 1;
+         int bitsPerPixel = stuff->format == ZPixmap ? pDraw->bitsPerPixel : 1;
+         PixmapPtr pPix = GetScratchPixmapHeader(pDraw->pScreen, stuff->width,
+@@ -821,6 +834,11 @@
+         return ProcShmGetImage(client);
+ 
+     rc = dixLookupDrawable(&pDraw, stuff->drawable, client, 0, DixReadAccess);
++    if (rc != Success)
++        return rc;
++
++    /* The multi screen path cannot build the view, refuse. */
++    rc = MeetingPrivacyCopyError(client, pDraw);
+     if (rc != Success)
+         return rc;
+ 
+Index: xorg-server/composite/compext.c
+===================================================================
+--- xorg-server.orig/composite/compext.c
++++ xorg-server/composite/compext.c
+@@ -47,6 +47,7 @@
+ 
+ #include "compint.h"
+ #include "xace.h"
++#include "../dix/dispatch.h"
+ #include "protocol-versions.h"
+ #include "extinit.h"
+ 
+@@ -240,6 +241,10 @@
+ 
+     if (!pWin->viewable)
+         return BadMatch;
++
++    rc = MeetingPrivacyCopyError(client, &pWin->drawable);
++    if (rc != Success)
++        return rc;
+ 
+     LEGAL_NEW_RESOURCE(stuff->pixmap, client);
+ 
+Index: xorg-server/dix/dispatch.c
+===================================================================
+--- xorg-server.orig/dix/dispatch.c
++++ xorg-server/dix/dispatch.c
+@@ -131,6 +131,7 @@
+ #include "client.h"
+ #include "xfixesint.h"
+ #include "propertyst.h"
++#include "randrstr.h"
+ 
+ #ifdef XSERVER_DTRACE
+ #include "registry.h"
+@@ -1053,6 +1054,19 @@
+         rep->x = rep->y = rep->borderWidth = 0;
+     }
+ 
++    /* Root and overlay cover the whole screen, report the view. */
++    {
++        int width, height, mmWidth, mmHeight;
++
++        if (MeetingPrivacyIsScreenLevel(pDraw) &&
++            RRPrivacyScreenSize(client, pDraw->pScreen, &width, &height,
++                                &mmWidth, &mmHeight)) {
++            rep->x = rep->y = 0;
++            rep->width = width;
++            rep->height = height;
++        }
++    }
++
+     return Success;
+ }
+ 
+@@ -1781,6 +1795,7 @@
+     DrawablePtr pDst;
+     DrawablePtr pSrc;
+     GC *pGC;
++    Bool privacyView;
+ 
+     REQUEST(xCopyAreaReq);
+     RegionPtr pRgn;
+@@ -1802,12 +1817,21 @@
+     else
+         pSrc = pDst;
+ 
++    privacyView = MeetingPrivacyViewActive(client, pSrc->pScreen);
++
++    if (privacyView) {
++        rc = MeetingPrivacyCopyError(client, pSrc);
++        if (rc != Success)
++            return rc;
++    }
++
+     pRgn = (*pGC->ops->CopyArea) (pSrc, pDst, pGC, stuff->srcX, stuff->srcY,
+                                   stuff->width, stuff->height,
+                                   stuff->dstX, stuff->dstY);
+ 
+     // When the source and destination are different, it is usually a screenshot tools
+-    if (clients[CLIENT_ID(pSrc->id)] != clients[CLIENT_ID(pDst->id)]) {
++    if (!privacyView &&
++        clients[CLIENT_ID(pSrc->id)] != clients[CLIENT_ID(pDst->id)]) {
+         UaceCensorImage(client, pSrc, pDst, stuff->srcX, stuff->srcY, stuff->width, stuff->height);
+     }
+ 
+@@ -1846,6 +1870,10 @@
+     }
+     else
+         psrcDraw = pdstDraw;
++
++    rc = MeetingPrivacyCopyError(client, psrcDraw);
++    if (rc != Success)
++        return rc;
+ 
+     /* Check to see if stuff->bitPlane has exactly ONE good bit set */
+     if (stuff->bitPlane == 0 || (stuff->bitPlane & (stuff->bitPlane - 1)) ||
+@@ -2631,6 +2659,181 @@
+     return (pSel->client == client);
+ }
+ 
++#define MEETING_PRIVACY_MODE_ATOM "_DEEPIN_NET_MIRROR_MODE"
++
++/* Set by the window manager through _DEEPIN_NET_MIRROR_MODE on the root
++ * window, 0 = off. */
++Bool
++MeetingPrivacyModeEnabled(ScreenPtr pScreen)
++{
++    Atom atom;
++    PropertyPtr pProp;
++
++    if (!pScreen || !pScreen->root)
++        return FALSE;
++
++    /* Resolved per call, the atom table is rebuilt on server reset. */
++    atom = MakeAtom(MEETING_PRIVACY_MODE_ATOM,
++                    strlen(MEETING_PRIVACY_MODE_ATOM), TRUE);
++
++    if (dixLookupProperty(&pProp, pScreen->root, atom, serverClient,
++                          DixReadAccess) != Success)
++        return FALSE;
++
++    return pProp->format == 32 && pProp->size >= 1 &&
++           ((CARD32 *) pProp->data)[0] != 0;
++}
++
++Bool
++MeetingPrivacyViewActive(ClientPtr client, ScreenPtr pScreen)
++{
++    if (!client || !pScreen || IsClientWindowManager(client, pScreen))
++        return FALSE;
++
++    return MeetingPrivacyModeEnabled(pScreen);
++}
++
++/* TRUE for the drawables that hold the screen content itself */
++Bool
++MeetingPrivacyIsScreenLevel(DrawablePtr pDraw)
++{
++    ScreenPtr pScreen;
++    WindowPtr pWin;
++    int i;
++
++    if (!pDraw || !(pScreen = pDraw->pScreen))
++        return FALSE;
++
++    if (pDraw->type == DRAWABLE_WINDOW) {
++        pWin = (WindowPtr) pDraw;
++        if (pWin == pScreen->root)
++            return TRUE;
++        /* Composite overlay window, covers the whole screen. */
++        return pWin->parent == pScreen->root && pWin->overrideRedirect &&
++               clients[CLIENT_ID(pWin->drawable.id)] == serverClient &&
++               pDraw->x == 0 && pDraw->y == 0 &&
++               pDraw->width == pScreen->width &&
++               pDraw->height == pScreen->height;
++    }
++
++    for (i = 0; i < screenInfo.numScreens; i++) {
++        if ((*screenInfo.screens[i]->GetScreenPixmap) (screenInfo.screens[i]) ==
++            (PixmapPtr) pDraw)
++            return TRUE;
++    }
++
++    return FALSE;
++}
++
++/* Error a read of pDraw has to fail with, Success when it may go on:
++ * screen content belongs to the window manager, a window to its client. */
++static int
++meetingPrivacyReadError(ClientPtr client, DrawablePtr pDraw, int format,
++                        Bool screenView)
++{
++    if (!MeetingPrivacyViewActive(client, pDraw->pScreen))
++        return Success;
++
++    if (MeetingPrivacyIsScreenLevel(pDraw)) {
++        /* A plane cannot be remapped out of the screen content. */
++        if (format == XYPixmap || !screenView)
++            return BadMatch;
++        return Success;
++    }
++
++    if (pDraw->type != DRAWABLE_WINDOW)
++        return Success;
++
++    return clients[CLIENT_ID(pDraw->id)] == client ? Success : BadAccess;
++}
++
++int
++MeetingPrivacyImageError(ClientPtr client, DrawablePtr pDraw, int format)
++{
++    return meetingPrivacyReadError(client, pDraw, format, TRUE);
++}
++
++int
++MeetingPrivacyCopyError(ClientPtr client, DrawablePtr pDraw)
++{
++    return meetingPrivacyReadError(client, pDraw, ZPixmap, FALSE);
++}
++
++/* Replace one band of a read with the matching rectangle of the view, the
++ * request keeps its position and size. */
++void
++MeetingPrivacyFillScreenView(DrawablePtr pDraw, int x, int y, int width,
++                             int height, char *buf)
++{
++    ScreenPtr pScreen = pDraw->pScreen;
++    PixmapPtr pScreenPix;
++    BoxRec view, secondary, band, clip, src;
++    Bool hasSecondary;
++    char *tmp;
++    long stride = PixmapBytePad(width, pDraw->depth);
++    long tmpStride;
++    int bytesPerPixel = pDraw->bitsPerPixel >> 3;
++    int line, sy;
++
++    for (line = 0; line < height; line++)
++        memset(buf + line * stride, 0, stride);
++
++    if (bytesPerPixel < 1 ||
++        !RRPrivacyViewBoxes(pScreen, &view, &secondary, &hasSecondary))
++        return;
++
++    if (!hasSecondary)
++        secondary = view;
++
++    band.x1 = x;
++    band.y1 = y;
++    band.x2 = x + width;
++    band.y2 = y + height;
++    if (band.x1 >= view.x2 || band.x2 <= view.x1 ||
++        band.y1 >= view.y2 || band.y2 <= view.y1)
++        return;
++
++    clip.x1 = max(band.x1, view.x1);
++    clip.y1 = max(band.y1, view.y1);
++    clip.x2 = min(band.x2, view.x2);
++    clip.y2 = min(band.y2, view.y2);
++
++    src.x1 = secondary.x1 + (clip.x1 - view.x1);
++    src.y1 = secondary.y1 + (clip.y1 - view.y1);
++    src.x2 = min(secondary.x1 + (clip.x2 - view.x1), secondary.x2);
++    src.y2 = min(secondary.y1 + (clip.y2 - view.y1), secondary.y2);
++    if (src.x1 >= src.x2 || src.y1 >= src.y2)
++        return;
++
++    tmpStride = PixmapBytePad(src.x2 - src.x1, pDraw->depth);
++    tmp = malloc((size_t) tmpStride * (src.y2 - src.y1));
++    if (!tmp)
++        return;
++
++    pScreenPix = (*pScreen->GetScreenPixmap) (pScreen);
++    (*pScreen->GetImage) (&pScreenPix->drawable, src.x1, src.y1,
++                          src.x2 - src.x1, src.y2 - src.y1, ZPixmap, ~0, tmp);
++
++    for (sy = src.y1; sy < src.y2; sy++) {
++        int destY = clip.y1 + (sy - src.y1) - y;
++        int destX = clip.x1 - x;
++        int span = src.x2 - src.x1;
++
++        if (destY < 0 || destY >= height || destX < 0)
++            continue;
++        if (span > width - destX)
++            span = width - destX;
++        if (span <= 0)
++            continue;
++
++        memcpy(buf + destY * stride + destX * bytesPerPixel,
++               tmp + (sy - src.y1) * tmpStride,
++               (size_t) span * bytesPerPixel);
++    }
++
++    free(tmp);
++}
++
+ static int
+ DoGetImage(ClientPtr client, int format, Drawable drawable,
+            int x, int y, int width, int height,
+@@ -2639,6 +2842,7 @@
+     DrawablePtr pDraw, pBoundingDraw;
+     int nlines, linesPerBuf, rc;
+     int linesDone;
++    Bool privacyView, isWindowManager, privacyScreenView;
+ 
+     /* coordinates relative to the bounding drawable */
+     int relx, rely;
+@@ -2660,7 +2864,15 @@
+ 
+     relx = x;
+     rely = y;
+-    Bool isWindowManager = IsClientWindowManager(client, pDraw->pScreen);
++    privacyView = MeetingPrivacyViewActive(client, pDraw->pScreen);
++    isWindowManager = IsClientWindowManager(client, pDraw->pScreen);
++    privacyScreenView = privacyView && MeetingPrivacyIsScreenLevel(pDraw);
++
++    if (privacyView) {
++        rc = MeetingPrivacyImageError(client, pDraw, format);
++        if (rc != Success)
++            return rc;
++    }
+ 
+     if (pDraw->type == DRAWABLE_WINDOW) {
+         WindowPtr pWin = (WindowPtr) pDraw;
+@@ -2789,9 +3001,13 @@
+ 
+             /* Note that this is NOT a call to WriteSwappedDataToClient,
+                as we do NOT byte swap */
++            if (privacyScreenView) {
++                MeetingPrivacyFillScreenView(pDraw, x, y + linesDone,
++                                             width, nlines, pBuf);
++            }
+             ReformatImage(pBuf, (int) (nlines * widthBytesLine),
+                           BitsPerPixel(pDraw->depth), ClientOrder(client));
+-            if (!isWindowManager) {
++            if (!isWindowManager && !privacyScreenView) {
+                 PixmapPtr pPix = GetScratchPixmapHeader(pDraw->pScreen, width, nlines, pDraw->depth, pDraw->bitsPerPixel, widthBytesLine, (void *) pBuf);
+                 UaceCensorImage(client, pDraw, &pPix->drawable, x, y + linesDone, width, nlines);
+                 FreeScratchPixmapHeader(pPix);
+@@ -4189,6 +4405,7 @@
+     xWindowRoot *root;
+     int i;
+     int numScreens;
++    int width, height, mmWidth, mmHeight;
+     char *lConnectionInfo;
+     xConnSetupPrefix *lconnSetupPrefix;
+ 
+@@ -4210,6 +4427,16 @@
+ 
+     numScreens = screenInfo.numScreens;
+     lConnectionInfo = ConnectionInfo;
++
++    /* The setup block carries the screen size, patch a private copy. */
++    if (MeetingPrivacyViewActive(client, screenInfo.screens[0])) {
++        size_t setupLen = (size_t) connSetupPrefix.length << 2;
++
++        lConnectionInfo = malloc(setupLen);
++        if (!lConnectionInfo)
++            return BadAlloc;
++        memcpy(lConnectionInfo, ConnectionInfo, setupLen);
++    }
+     lconnSetupPrefix = &connSetupPrefix;
+ 
+     /* We're about to start speaking X protocol back to the client by
+@@ -4242,6 +4469,14 @@
+         WindowPtr pRoot = screenInfo.screens[i]->root;
+ 
+         root->currentInputMask = pRoot->eventMask | wOtherEventMasks(pRoot);
++        if (lConnectionInfo != ConnectionInfo &&
++            RRPrivacyScreenSize(client, screenInfo.screens[i], &width, &height,
++                                &mmWidth, &mmHeight)) {
++            root->pixWidth = width;
++            root->pixHeight = height;
++            root->mmWidth = mmWidth;
++            root->mmHeight = mmHeight;
++        }
+         pDepth = (xDepth *) (root + 1);
+         for (j = 0; j < root->nDepths; j++) {
+             pDepth = (xDepth *) (((char *) (pDepth + 1)) +
+@@ -4270,6 +4505,8 @@
+         clientinfo.setup = (xConnSetup *) lConnectionInfo;
+         CallCallbacks((&ClientStateCallback), (void *) &clientinfo);
+     }
++    if (lConnectionInfo != ConnectionInfo)
++        free(lConnectionInfo);
+     CancelDispatchExceptionTimer();
+     return Success;
+ }
+Index: xorg-server/dix/dispatch.h
+===================================================================
+--- xorg-server.orig/dix/dispatch.h
++++ xorg-server/dix/dispatch.h
+@@ -150,4 +150,13 @@
+         const BoxRec *imageBox, xRectangle *rect, unsigned int bgPixel,
+         unsigned int lockPixel);
+ 
++/* The view itself lives in randr, dix/dispatch.c includes randrstr.h. */
++Bool MeetingPrivacyModeEnabled(ScreenPtr pScreen);
++Bool MeetingPrivacyViewActive(ClientPtr client, ScreenPtr pScreen);
++Bool MeetingPrivacyIsScreenLevel(DrawablePtr pDraw);
++int MeetingPrivacyImageError(ClientPtr client, DrawablePtr pDraw, int format);
++int MeetingPrivacyCopyError(ClientPtr client, DrawablePtr pDraw);
++void MeetingPrivacyFillScreenView(DrawablePtr pDraw, int x, int y, int width,
++                                  int height, char *buf);
++
+ #endif                          /* DISPATCH_H */
+Index: xorg-server/dix/property.c
+===================================================================
+--- xorg-server.orig/dix/property.c
++++ xorg-server/dix/property.c
+@@ -56,6 +56,7 @@
+ #include "dispatch.h"
+ #include "swaprep.h"
+ #include "xace.h"
++#include "randrstr.h"
+ 
+ /*****************************************************************
+  * Property Stuff
+@@ -444,6 +445,79 @@
+  *    deleted from the window and a PropertyNotify event is generated on the
+  *    window.
+  *****************/
++/* Screen level properties carry the layout geometry.  A restricted client is
++ * shown the view, so the ones that name it answer with the view instead of
++ * the layout it was cut out of.  Returns the CARD32 items to reply with, or
++ * NULL when the property is not one of them. */
++static CARD32 *
++privacyPropertyData(ClientPtr client, WindowPtr pWin, PropertyPtr pProp,
++                    unsigned long *count)
++{
++    static Atom geometry, workarea;
++    int width, height, mmWidth, mmHeight;
++    unsigned long i, desktops;
++    CARD32 *data;
++
++    if (pProp->format != 32)
++        return NULL;
++
++    if (!geometry) {
++        geometry = MakeAtom("_NET_DESKTOP_GEOMETRY",
++                            sizeof("_NET_DESKTOP_GEOMETRY") - 1, FALSE);
++        workarea = MakeAtom("_NET_WORKAREA", sizeof("_NET_WORKAREA") - 1,
++                            FALSE);
++    }
++    if (pProp->propertyName != geometry && pProp->propertyName != workarea)
++        return NULL;
++
++    if (!MeetingPrivacyIsScreenLevel((DrawablePtr) pWin) ||
++        !RRPrivacyScreenSize(client, pWin->drawable.pScreen, &width, &height,
++                             &mmWidth, &mmHeight))
++        return NULL;
++
++    if (pProp->propertyName == geometry) {
++        if (pProp->size < 2)
++            return NULL;
++        *count = 2;
++    }
++    else {
++        desktops = pProp->size / 4;
++        if (!desktops)
++            return NULL;
++        *count = desktops * 4;
++    }
++
++    data = calloc(*count, sizeof(CARD32));
++    if (!data)
++        return NULL;
++
++    if (pProp->propertyName == geometry) {
++        data[0] = width;
++        data[1] = height;
++    }
++    else {
++        /* the work area keeps the struts the window manager reserved, clipped
++         * to the view; the view is anchored at the origin, so the clip is a
++         * plain intersection */
++        memcpy(data, pProp->data, *count * sizeof(CARD32));
++        for (i = 0; i < *count; i += 4) {
++            unsigned long left = data[i], top = data[i + 1];
++            unsigned long right = left + data[i + 2];
++            unsigned long bottom = top + data[i + 3];
++
++            unsigned long x2 = right > (unsigned long) width ?
++                (unsigned long) width : right;
++            unsigned long y2 = bottom > (unsigned long) height ?
++                (unsigned long) height : bottom;
++
++            data[i] = 0;
++            data[i + 1] = 0;
++            data[i + 2] = x2 > left ? x2 - left : 0;
++            data[i + 3] = y2 > top ? y2 - top : 0;
++        }
++    }
++    return data;
++}
+ 
+ int
+ ProcGetProperty(ClientPtr client)
+@@ -504,6 +578,41 @@
+         return Success;
+     }
+ 
++    /* A restricted client is shown the view, so the screen level properties
++     * that carry the layout geometry answer with it.  Deleting a property is
++     * a write and keeps its own path. */
++    if (!stuff->delete) {
++        unsigned long count;
++        CARD32 *data = privacyPropertyData(client, pWin, pProp, &count);
++
++        if (data) {
++            n = count * sizeof(CARD32);
++            ind = stuff->longOffset << 2;
++            if (n < ind) {
++                free(data);
++                client->errorValue = stuff->longOffset;
++                return BadValue;
++            }
++            len = min(n - ind, 4 * stuff->longLength);
++            reply = (xGetPropertyReply) {
++                .type = X_Reply,
++                .sequenceNumber = client->sequence,
++                .bytesAfter = n - (ind + len),
++                .format = 32,
++                .length = bytes_to_int32(len),
++                .nItems = len / 4,
++                .propertyType = pProp->type
++            };
++            WriteReplyToClient(client, sizeof(xGenericReply), &reply);
++            if (len) {
++                client->pSwapReplyFunc = (ReplySwapPtr) CopySwap32Write;
++                WriteSwappedDataToClient(client, len, (char *) data + ind);
++            }
++            free(data);
++            return Success;
++        }
++    }
++
+ /*
+  *  Return type, format, value to client
+  */
+Index: xorg-server/dri3/dri3_request.c
+===================================================================
+--- xorg-server.orig/dri3/dri3_request.c
++++ xorg-server/dri3/dri3_request.c
+@@ -21,6 +21,7 @@
+  */
+ 
+ #include "dri3_priv.h"
++#include "../dix/dispatch.h"
+ #include <syncsrv.h>
+ #include <unistd.h>
+ #include <xace.h>
+@@ -248,6 +249,11 @@
+         client->errorValue = stuff->pixmap;
+         return rc;
+     }
++
++    /* A screen pixmap holds the whole screen, a non-WM client cannot export it */
++    if (MeetingPrivacyViewActive(client, pixmap->drawable.pScreen) &&
++        MeetingPrivacyIsScreenLevel(&pixmap->drawable))
++        return BadMatch;
+ 
+     rep.width = pixmap->drawable.width;
+     rep.height = pixmap->drawable.height;
+@@ -515,6 +521,11 @@
+         return rc;
+     }
+ 
++    /* A screen pixmap holds the whole screen, a non-WM client cannot export it */
++    if (MeetingPrivacyViewActive(client, pixmap->drawable.pScreen) &&
++        MeetingPrivacyIsScreenLevel(&pixmap->drawable))
++        return BadMatch;
++
+     num_fds = dri3_fds_from_pixmap(pixmap, fds, strides, offsets, &modifier);
+     if (num_fds == 0)
+         return BadPixmap;
+Index: xorg-server/randr/Makefile.am
+===================================================================
+--- xorg-server.orig/randr/Makefile.am
++++ xorg-server/randr/Makefile.am
+@@ -24,6 +24,7 @@
+ 	rrproviderproperty.c    \
+ 	rrscreen.c	\
+ 	rrsdispatch.c	\
++	rrmeetingprivacy.c	\
+ 	rrtransform.h	\
+ 	rrtransform.c
+ 
+Index: xorg-server/randr/meson.build
+===================================================================
+--- xorg-server.orig/randr/meson.build
++++ xorg-server/randr/meson.build
+@@ -13,6 +13,7 @@
+     'rrproviderproperty.c',
+     'rrscreen.c',
+     'rrsdispatch.c',
++    'rrmeetingprivacy.c',
+     'rrtransform.c',
+ ]
+ 
+Index: xorg-server/randr/randr.c
+===================================================================
+--- xorg-server.orig/randr/randr.c
++++ xorg-server/randr/randr.c
+@@ -744,6 +744,8 @@
+     REQUEST(xReq);
+     if (stuff->data >= RRNumberRequests || !ProcRandrVector[stuff->data])
+         return BadRequest;
++    if (!RRPrivacyRequestAllowed(client, stuff->data))
++        return BadAccess;
+     UpdateCurrentTimeIf();
+     return (*ProcRandrVector[stuff->data]) (client);
+ }
+@@ -754,6 +756,8 @@
+     REQUEST(xReq);
+     if (stuff->data >= RRNumberRequests || !SProcRandrVector[stuff->data])
+         return BadRequest;
++    if (!RRPrivacyRequestAllowed(client, stuff->data))
++        return BadAccess;
+     UpdateCurrentTimeIf();
+     return (*SProcRandrVector[stuff->data]) (client);
+ }
+Index: xorg-server/randr/randrstr.h
+===================================================================
+--- xorg-server.orig/randr/randrstr.h
++++ xorg-server/randr/randrstr.h
+@@ -1096,6 +1096,32 @@
+ 
+ extern _X_EXPORT int
+  ProcRRDeleteProviderProperty(ClientPtr client);
++
++/* rrmeetingprivacy.c */
++extern _X_EXPORT Bool
++ RRPrivacyRequestAllowed(ClientPtr client, int req);
++extern _X_EXPORT Bool
++ RRPrivacyAnchor(ScreenPtr pScreen, RRCrtcPtr *crtc, RROutputPtr *output,
++                 BoxRec *box);
++extern _X_EXPORT Bool
++ RRPrivacyViewBox(ScreenPtr pScreen, BoxRec *box);
++extern _X_EXPORT Bool
++ RRPrivacyScreenSize(ClientPtr client, ScreenPtr pScreen, int *width,
++                     int *height, int *mmWidth, int *mmHeight);
++
++/* Write one mode of a resources reply, name included, swapped when asked */
++extern _X_EXPORT void
++ RRWriteModeInfo(xRRModeInfo *info, CARD8 *name, RRModePtr mode, Bool swapped);
++extern _X_EXPORT Bool
++ RRPrivacyViewBoxes(ScreenPtr pScreen, BoxRec *view, BoxRec *secondary,
++                    Bool *hasSecondary);
++extern _X_EXPORT Bool
++ RRPrivacyCrtcHidden(ClientPtr client, RRCrtcPtr crtc);
++extern _X_EXPORT Bool
++ RRPrivacyOutputHidden(ClientPtr client, RROutputPtr output);
++extern _X_EXPORT RRModePtr *
++ RRPrivacyModes(RROutputPtr output, RRCrtcPtr crtc, int *num);
++
+ /* rrxinerama.c */
+ #ifdef XINERAMA
+ extern _X_EXPORT void
+Index: xorg-server/randr/rrcrtc.c
+===================================================================
+--- xorg-server.orig/randr/rrcrtc.c
++++ xorg-server/randr/rrcrtc.c
+@@ -22,6 +22,7 @@
+  */
+ 
+ #include "randrstr.h"
++#include "../dix/dispatch.h"
+ #include "swaprep.h"
+ #include "mipointer.h"
+ 
+@@ -235,6 +236,9 @@
+ RRDeliverCrtcEvent(ClientPtr client, WindowPtr pWin, RRCrtcPtr crtc)
+ {
+     ScreenPtr pScreen = pWin->drawable.pScreen;
++    /* Meeting privacy: a hidden CRTC does not exist for this client */
++    if (RRPrivacyCrtcHidden(client, crtc))
++        return;
+ 
+     rrScrPriv(pScreen);
+     RRModePtr mode = crtc->mode;
+@@ -1159,6 +1163,9 @@
+     REQUEST_SIZE_MATCH(xRRGetCrtcInfoReq);
+     VERIFY_RR_CRTC(stuff->crtc, crtc, DixReadAccess);
+ 
++    if (RRPrivacyCrtcHidden(client, crtc))
++        return BadMatch;
++
+     leased = RRCrtcIsLeased(crtc);
+ 
+     /* All crtcs must be associated with screens before client
+@@ -1202,6 +1209,18 @@
+             rep.width = width;
+             rep.height = height;
+         }
++        /* the privacy view is a single screen anchored at the origin */
++        if (MeetingPrivacyViewActive(client, pScreen)) {
++            BoxRec view;
++
++            if (RRPrivacyViewBox(pScreen, &view)) {
++                rep.x = 0;
++                rep.y = 0;
++                rep.width = view.x2 - view.x1;
++                rep.height = view.y2 - view.y1;
++            }
++        }
++
+         rep.mode = mode ? mode->mode.id : 0;
+         rep.rotation = crtc->rotation;
+         rep.rotations = crtc->rotations;
+@@ -1499,6 +1518,9 @@
+ 
+     REQUEST_SIZE_MATCH(xRRGetPanningReq);
+     VERIFY_RR_CRTC(stuff->crtc, crtc, DixReadAccess);
++
++    if (RRPrivacyCrtcHidden(client, crtc))
++        return BadMatch;
+ 
+     /* All crtcs must be associated with screens before client
+      * requests are processed
+@@ -1639,6 +1661,9 @@
+     REQUEST_SIZE_MATCH(xRRGetCrtcGammaSizeReq);
+     VERIFY_RR_CRTC(stuff->crtc, crtc, DixReadAccess);
+ 
++    if (RRPrivacyCrtcHidden(client, crtc))
++        return BadMatch;
++
+     /* Gamma retrieval failed, any better error? */
+     if (!RRCrtcGammaGet(crtc))
+         return RRErrorBase + BadRRCrtc;
+@@ -1669,6 +1694,9 @@
+ 
+     REQUEST_SIZE_MATCH(xRRGetCrtcGammaReq);
+     VERIFY_RR_CRTC(stuff->crtc, crtc, DixReadAccess);
++
++    if (RRPrivacyCrtcHidden(client, crtc))
++        return BadMatch;
+ 
+     /* Gamma retrieval failed, any better error? */
+     if (!RRCrtcGammaGet(crtc))
+@@ -1834,6 +1862,9 @@
+     REQUEST_SIZE_MATCH(xRRGetCrtcTransformReq);
+     VERIFY_RR_CRTC(stuff->crtc, crtc, DixReadAccess);
+ 
++    if (RRPrivacyCrtcHidden(client, crtc))
++        return BadMatch;
++
+     pending = &crtc->client_pending_transform;
+     current = &crtc->client_current_transform;
+ 
+Index: xorg-server/randr/rrmeetingprivacy.c
+===================================================================
+--- /dev/null
++++ xorg-server/randr/rrmeetingprivacy.c
+@@ -0,0 +1,285 @@
++/*
++ * The view a client other than the window manager sees: one CRTC anchored at
++ * the origin, with the output it scans out.  Every reply about the screen and
++ * every pixel read is derived from it.
++ *
++ * Permission is hereby granted, free of charge, to any person obtaining a
++ * copy of this software and associated documentation files (the "Software"),
++ * to deal in the Software without restriction, including without limitation
++ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
++ * and/or sell copies of the Software, and to permit persons to whom the
++ * Software is furnished to do so, subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice shall be included in
++ * all copies or substantial portions of the Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
++ * THE COPYRIGHT HOLDER(S) OR AUTHOR(S) BE LIABLE FOR ANY CLAIM, DAMAGES OR
++ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
++ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
++ * OTHER DEALINGS IN THE SOFTWARE.
++ */
++#include "randrstr.h"
++#include "../dix/dispatch.h"
++
++/* Requests a restricted client may still issue, by protocol number, in the
++ * order randrproto.h lists them: QueryVersion, SelectInput, GetScreenInfo,
++ * GetScreenSizeRange, GetScreenResources, GetOutputInfo, ListOutputProperties,
++ * QueryOutputProperty, GetOutputProperty, GetCrtcInfo, GetCrtcGammaSize,
++ * GetCrtcGamma, GetScreenResourcesCurrent, GetCrtcTransform, GetPanning,
++ * GetOutputPrimary, GetProviders, GetProviderInfo, ListProviderProperties,
++ * QueryProviderProperty, GetProviderProperty, GetMonitors.  Everything else
++ * changes the configuration or leaves the view, and is refused.
++ */
++static const CARD8 rrPrivacyAllowed[] = {
++    0, 4, 5, 6, 8, 9, 10, 11, 15, 20, 22, 23, 25, 27, 28, 31, 32, 33, 36, 37,
++    41, 42,
++};
++
++Bool
++RRPrivacyRequestAllowed(ClientPtr client, int req)
++{
++    unsigned int i;
++
++    if (!screenInfo.screens[0] ||
++        !MeetingPrivacyViewActive(client, screenInfo.screens[0]))
++        return TRUE;
++
++    for (i = 0; i < ARRAY_SIZE(rrPrivacyAllowed); i++)
++        if (rrPrivacyAllowed[i] == req)
++            return TRUE;
++    return FALSE;
++}
++
++/* The single screen a restricted client is shown.  box is where crtc scans
++ * out, in screen coordinates. */
++typedef struct {
++    RRCrtcPtr crtc;
++    RROutputPtr output;
++    BoxRec box;
++} RRPrivacyView;
++
++/* Rectangle a CRTC scans out, in the coordinates of its screen */
++static Bool
++rrPrivacyCrtcBox(RRCrtcPtr crtc, BoxRec *box)
++{
++    int width, height;
++
++    if (!crtc || !crtc->mode)
++        return FALSE;
++
++    RRCrtcGetScanoutSize(crtc, &width, &height);
++    if (width <= 0 || height <= 0)
++        return FALSE;
++
++    box->x1 = crtc->x;
++    box->y1 = crtc->y;
++    box->x2 = box->x1 + width;
++    box->y2 = box->y1 + height;
++    return TRUE;
++}
++
++/* The visible CRTC is the primary output's, or the first enabled one when no
++ * primary output is marked.  FALSE means nothing is lit up, which callers must
++ * treat as "hide everything" rather than fall back to the real layout. */
++static Bool
++rrPrivacyView(ScreenPtr pScreen, RRPrivacyView *view)
++{
++    rrScrPrivPtr pScrPriv;
++    int i;
++
++    if (!pScreen || !(pScrPriv = rrGetScrPriv(pScreen)))
++        return FALSE;
++
++    view->crtc = NULL;
++    view->output = NULL;
++    if (pScrPriv->primaryOutput &&
++        rrPrivacyCrtcBox(pScrPriv->primaryOutput->crtc, &view->box)) {
++        view->crtc = pScrPriv->primaryOutput->crtc;
++        view->output = pScrPriv->primaryOutput;
++        return TRUE;
++    }
++
++    for (i = 0; i < pScrPriv->numCrtcs && !view->crtc; i++)
++        if (rrPrivacyCrtcBox(pScrPriv->crtcs[i], &view->box))
++            view->crtc = pScrPriv->crtcs[i];
++    for (i = 0; i < pScrPriv->numOutputs && !view->output; i++)
++        if (pScrPriv->outputs[i]->crtc == view->crtc)
++            view->output = pScrPriv->outputs[i];
++
++    return view->crtc != NULL;
++}
++
++Bool
++RRPrivacyAnchor(ScreenPtr pScreen, RRCrtcPtr *crtc, RROutputPtr *output,
++                BoxRec *box)
++{
++    RRPrivacyView view;
++
++    if (!rrPrivacyView(pScreen, &view))
++        return FALSE;
++
++    if (crtc)
++        *crtc = view.crtc;
++    if (output)
++        *output = view.output;
++    if (box)
++        *box = view.box;
++    return TRUE;
++}
++
++/*
++ * Geometry of the view: the CRTC box anchored at the origin.  Every advertised
++ * rectangle and every pixel read uses this coordinate space, so the view
++ * starts at 0,0 no matter where the CRTC sits in the real layout.
++ *
++ * This translation is only carried out for the rectangles and the pixels the
++ * view hands out.  Window positions, TranslateCoordinates and the root
++ * coordinates of pointer events stay in the real layout, so a non-zero anchor
++ * origin would leave every client with coordinates that are biased against
++ * the screen it is told it has.  The mode therefore relies on the invariant
++ * that the window manager keeps the anchor CRTC at the origin, which mirroring
++ * does by construction; a layout that breaks it is reported rather than
++ * misplaced silently.
++ */
++Bool
++RRPrivacyViewBox(ScreenPtr pScreen, BoxRec *box)
++{
++    RRPrivacyView view;
++    static Bool warnedOrigin;
++
++    if (!rrPrivacyView(pScreen, &view))
++        return FALSE;
++
++    if ((view.box.x1 != 0 || view.box.y1 != 0) && !warnedOrigin) {
++        warnedOrigin = TRUE;
++        LogMessageVerb(X_WARNING, 0,
++                       "randr: privacy view anchor at %d,%d instead of the "
++                       "origin, client coordinates will be offset\n",
++                       view.box.x1, view.box.y1);
++    }
++
++    box->x1 = 0;
++    box->y1 = 0;
++    box->x2 = view.box.x2 - view.box.x1;
++    box->y2 = view.box.y2 - view.box.y1;
++    return TRUE;
++}
++
++/* Rectangles the pixel view is built from: the view rectangle a client reads
++ * and the first other enabled CRTC box its content comes from. */
++Bool
++RRPrivacyViewBoxes(ScreenPtr pScreen, BoxRec *view, BoxRec *secondary,
++                   Bool *hasSecondary)
++{
++    rrScrPrivPtr pScrPriv = rrGetScrPriv(pScreen);
++    RRPrivacyView anchor;
++    int i;
++
++    *hasSecondary = FALSE;
++    if (!pScrPriv || !rrPrivacyView(pScreen, &anchor) ||
++        !RRPrivacyViewBox(pScreen, view))
++        return FALSE;
++
++    for (i = 0; i < pScrPriv->numCrtcs; i++) {
++        if (pScrPriv->crtcs[i] == anchor.crtc)
++            continue;
++        if (rrPrivacyCrtcBox(pScrPriv->crtcs[i], secondary)) {
++            *hasSecondary = TRUE;
++            break;
++        }
++    }
++    return TRUE;
++}
++
++/* Size a restricted client is told its screen has: the view box in pixels and
++ * the physical size of the anchor output in millimetres when it is known.  The
++ * connection setup block, the root window geometry and the RandR size range
++ * all report this, so none of them hands out the dimensions of the real
++ * layout the view was cut out of. */
++Bool
++RRPrivacyScreenSize(ClientPtr client, ScreenPtr pScreen, int *width,
++                    int *height, int *mmWidth, int *mmHeight)
++{
++    RRPrivacyView view;
++
++    if (!MeetingPrivacyViewActive(client, pScreen) ||
++        !rrPrivacyView(pScreen, &view))
++        return FALSE;
++
++    *width = view.box.x2 - view.box.x1;
++    *height = view.box.y2 - view.box.y1;
++
++    if (view.output && view.output->mmWidth > 0 && view.output->mmHeight > 0) {
++        *mmWidth = view.output->mmWidth;
++        *mmHeight = view.output->mmHeight;
++    }
++    else if (pScreen->width > 0 && pScreen->height > 0) {
++        *mmWidth = pScreen->mmWidth * *width / pScreen->width;
++        *mmHeight = pScreen->mmHeight * *height / pScreen->height;
++    }
++    else {
++        *mmWidth = 0;
++        *mmHeight = 0;
++    }
++    return TRUE;
++}
++
++Bool
++RRPrivacyCrtcHidden(ClientPtr client, RRCrtcPtr crtc)
++{
++    RRPrivacyView view;
++
++    if (!crtc || !crtc->pScreen ||
++        !MeetingPrivacyViewActive(client, crtc->pScreen))
++        return FALSE;
++    if (!rrPrivacyView(crtc->pScreen, &view))
++        return TRUE;
++    return crtc != view.crtc;
++}
++
++Bool
++RRPrivacyOutputHidden(ClientPtr client, RROutputPtr output)
++{
++    RRPrivacyView view;
++
++    if (!output || !output->pScreen ||
++        !MeetingPrivacyViewActive(client, output->pScreen))
++        return FALSE;
++    if (!rrPrivacyView(output->pScreen, &view))
++        return TRUE;
++    return output != view.output;
++}
++
++/* Modes the view advertises: the modes of its output plus the mode its CRTC
++ * scans out, which stays visible even when the output does not list it -- a
++ * mode missing here but named by RRGetOutputInfo makes clients print it as an
++ * unknown mode id.  Returns NULL when out of memory, like RRModesForScreen(). */
++RRModePtr *
++RRPrivacyModes(RROutputPtr output, RRCrtcPtr crtc, int *num)
++{
++    int numModes = output ? output->numModes + output->numUserModes : 0;
++    RRModePtr *modes;
++    int i;
++
++    modes = calloc(numModes + 1, sizeof(RRModePtr));
++    if (!modes)
++        return NULL;
++
++    for (i = 0; i < numModes; i++)
++        modes[i] = i < output->numModes ? output->modes[i]
++            : output->userModes[i - output->numModes];
++
++    if (crtc->mode) {
++        for (i = 0; i < numModes; i++)
++            if (modes[i] == crtc->mode)
++                break;
++        if (i == numModes)
++            modes[numModes++] = crtc->mode;
++    }
++
++    *num = numModes;
++    return modes;
++}
+Index: xorg-server/randr/rrmonitor.c
+===================================================================
+--- xorg-server.orig/randr/rrmonitor.c
++++ xorg-server/randr/rrmonitor.c
+@@ -21,6 +21,7 @@
+  */
+ 
+ #include "randrstr.h"
++#include "../dix/dispatch.h"
+ #include "swaprep.h"
+ 
+ static Atom
+@@ -607,6 +608,64 @@
+     if (r != Success)
+         return r;
+     screen = window->drawable.pScreen;
++
++    if (MeetingPrivacyViewActive(client, screen)) {
++        RRCrtcPtr crtc;
++        RROutputPtr output;
++        BoxRec box;
++        RROutput outputId;
++        xRRMonitorInfo info;
++
++        if (!RRPrivacyAnchor(screen, &crtc, &output, NULL) ||
++            !RRPrivacyViewBox(screen, &box))
++            return BadMatch;
++
++        rep.timestamp = RRMonitorTimestamp(screen);
++        rep.nmonitors = 1;
++        rep.noutputs = output ? 1 : 0;
++        rep.length = (SIZEOF(xRRMonitorInfo) >> 2) + rep.noutputs;
++
++        if (client->swapped) {
++            swaps(&rep.sequenceNumber);
++            swapl(&rep.length);
++            swapl(&rep.timestamp);
++            swapl(&rep.nmonitors);
++            swapl(&rep.noutputs);
++        }
++        WriteToClient(client, sizeof(xRRGetMonitorsReply), &rep);
++
++        client->pSwapReplyFunc = (ReplySwapPtr) CopySwap32Write;
++
++        info = (xRRMonitorInfo) {
++            .name = output ? MakeAtom(output->name, output->nameLength, TRUE) : None,
++            .primary = TRUE,
++            .automatic = FALSE,
++            .noutput = rep.noutputs,
++            .x = box.x1,
++            .y = box.y1,
++            .width = box.x2 - box.x1,
++            .height = box.y2 - box.y1,
++            .widthInMillimeters = output ? output->mmWidth : 0,
++            .heightInMillimeters = output ? output->mmHeight : 0,
++        };
++        if (client->swapped) {
++            swapl(&info.name);
++            swaps(&info.noutput);
++            swaps(&info.x);
++            swaps(&info.y);
++            swaps(&info.width);
++            swaps(&info.height);
++            swapl(&info.widthInMillimeters);
++            swapl(&info.heightInMillimeters);
++        }
++        WriteToClient(client, sizeof(xRRMonitorInfo), &info);
++
++        if (output) {
++            outputId = output->id;
++            WriteSwappedDataToClient(client, sizeof(RROutput), &outputId);
++        }
++        return Success;
++    }
+ 
+     get_active = stuff->get_active;
+     if (!RRMonitorMakeList(screen, get_active, &monitors, &nmonitors))
+Index: xorg-server/randr/rroutput.c
+===================================================================
+--- xorg-server.orig/randr/rroutput.c
++++ xorg-server/randr/rroutput.c
+@@ -339,6 +339,9 @@
+ RRDeliverOutputEvent(ClientPtr client, WindowPtr pWin, RROutputPtr output)
+ {
+     ScreenPtr pScreen = pWin->drawable.pScreen;
++    /* Meeting privacy: a hidden output does not exist for this client */
++    if (RRPrivacyOutputHidden(client, output))
++        return;
+ 
+     rrScrPriv(pScreen);
+     RRCrtcPtr crtc = output->crtc;
+@@ -465,6 +468,9 @@
+ 
+     REQUEST_SIZE_MATCH(xRRGetOutputInfoReq);
+     VERIFY_RR_OUTPUT(stuff->output, output, DixReadAccess);
++
++    if (RRPrivacyOutputHidden(client, output))
++        return BadMatch;
+ 
+     leased = RROutputIsLeased(output);
+ 
+Index: xorg-server/randr/rrproperty.c
+===================================================================
+--- xorg-server.orig/randr/rrproperty.c
++++ xorg-server/randr/rrproperty.c
+@@ -422,6 +422,9 @@
+ 
+     VERIFY_RR_OUTPUT(stuff->output, output, DixReadAccess);
+ 
++    if (RRPrivacyOutputHidden(client, output))
++        return BadMatch;
++
+     for (prop = output->properties; prop; prop = prop->next)
+         numProps++;
+     if (numProps)
+@@ -467,6 +470,9 @@
+ 
+     VERIFY_RR_OUTPUT(stuff->output, output, DixReadAccess);
+ 
++    if (RRPrivacyOutputHidden(client, output))
++        return BadMatch;
++
+     prop = RRQueryOutputProperty(output, stuff->property);
+     if (!prop)
+         return BadName;
+@@ -624,6 +630,9 @@
+         UpdateCurrentTime();
+     VERIFY_RR_OUTPUT(stuff->output, output,
+                      stuff->delete ? DixWriteAccess : DixReadAccess);
++
++    if (RRPrivacyOutputHidden(client, output))
++        return BadMatch;
+ 
+     if (!ValidAtom(stuff->property)) {
+         client->errorValue = stuff->property;
+Index: xorg-server/randr/rrscreen.c
+===================================================================
+--- xorg-server.orig/randr/rrscreen.c
++++ xorg-server/randr/rrscreen.c
+@@ -21,6 +21,7 @@
+  */
+ 
+ #include "randrstr.h"
++#include "../dix/dispatch.h"
+ 
+ static CARD16
+  RR10CurrentSizeID(ScreenPtr pScreen);
+@@ -120,6 +121,27 @@
+         se.heightInMillimeters = pScreen->mmHeight;
+     }
+ 
++    /* Meeting privacy: report the size of the view, not of the real layout */
++    if (MeetingPrivacyViewActive(client, pScreen)) {
++        int width, height, mmWidth, mmHeight;
++
++        if (RRPrivacyScreenSize(client, pScreen, &width, &height,
++                                &mmWidth, &mmHeight)) {
++            if (se.rotation & (RR_Rotate_90 | RR_Rotate_270)) {
++                se.widthInPixels = height;
++                se.heightInPixels = width;
++                se.widthInMillimeters = mmHeight;
++                se.heightInMillimeters = mmWidth;
++            }
++            else {
++                se.widthInPixels = width;
++                se.heightInPixels = height;
++                se.widthInMillimeters = mmWidth;
++                se.heightInMillimeters = mmHeight;
++            }
++        }
++    }
++
+     WriteEventsToClient(client, 1, (xEvent *) &se);
+ }
+ 
+@@ -222,6 +244,16 @@
+     else {
+         rep.maxWidth = rep.minWidth = pScreen->width;
+         rep.maxHeight = rep.minHeight = pScreen->height;
++    }
++    /* the privacy view has exactly one size: the anchor CRTC rectangle */
++    {
++        int width, height, mmWidth, mmHeight;
++
++        if (RRPrivacyScreenSize(client, pScreen, &width, &height, &mmWidth,
++                                &mmHeight)) {
++            rep.minWidth = rep.maxWidth = width;
++            rep.minHeight = rep.maxHeight = height;
++        }
+     }
+     if (client->swapped) {
+         swaps(&rep.sequenceNumber);
+@@ -323,6 +355,17 @@
+     swaps(&modeinfos[i].vTotal);
+     swaps(&modeinfos[i].nameLength);
+     swapl(&modeinfos[i].modeFlags);
++}
++
++/* Write one mode of a resources reply: the info block and the name that
++ * follows it, swapped when the client is */
++void
++RRWriteModeInfo(xRRModeInfo *info, CARD8 *name, RRModePtr mode, Bool swapped)
++{
++    *info = mode->mode;
++    memcpy(name, mode->name, mode->mode.nameLength);
++    if (swapped)
++        swap_modeinfos(info, 0);
+ }
+ 
+ #define update_arrays(gpuscreen, pScrPriv, primary_crtc, has_primary) do {            \
+@@ -496,6 +539,9 @@
+     RROutput *outputs;
+     xRRModeInfo *modeinfos;
+     CARD8 *names;
++    RRCrtcPtr viewCrtc;
++    RROutputPtr viewOutput;
++    Bool privacy = FALSE;
+ 
+     REQUEST_SIZE_MATCH(xRRGetScreenResourcesReq);
+     rc = dixLookupWindow(&pWin, stuff->window, client, DixGetAttrAccess);
+@@ -508,6 +554,12 @@
+     if (query && pScrPriv)
+         if (!RRGetInfo(pScreen, query))
+             return BadAlloc;
++
++    if (MeetingPrivacyViewActive(client, pScreen)) {
++        if (!RRPrivacyAnchor(pScreen, &viewCrtc, &viewOutput, NULL))
++            return BadMatch;
++        privacy = TRUE;
++    }
+ 
+     if (pScreen->output_secondarys)
+         return rrGetMultiScreenResources(client, query, pScreen);
+@@ -530,8 +582,22 @@
+     else {
+         RRModePtr *modes;
+         int num_modes;
+-
+-        modes = RRModesForScreen(pScreen, &num_modes);
++        RRCrtcPtr *crtcList = pScrPriv->crtcs;
++        RROutputPtr *outputList = pScrPriv->outputs;
++        RROutputPtr primaryOutput = pScrPriv->primaryOutput;
++        int numCrtcs = pScrPriv->numCrtcs;
++        int numOutputs = pScrPriv->numOutputs;
++
++        if (privacy) {
++            crtcList = &viewCrtc;
++            numCrtcs = 1;
++            outputList = viewOutput ? &viewOutput : NULL;
++            numOutputs = viewOutput ? 1 : 0;
++            primaryOutput = NULL;
++            modes = RRPrivacyModes(viewOutput, viewCrtc, &num_modes);
++        }
++        else
++            modes = RRModesForScreen(pScreen, &num_modes);
+         if (!modes)
+             return BadAlloc;
+ 
+@@ -541,8 +607,8 @@
+             .length = 0,
+             .timestamp = pScrPriv->lastSetTime.milliseconds,
+             .configTimestamp = pScrPriv->lastConfigTime.milliseconds,
+-            .nCrtcs = pScrPriv->numCrtcs,
+-            .nOutputs = pScrPriv->numOutputs,
++            .nCrtcs = numCrtcs,
++            .nOutputs = numOutputs,
+             .nModes = num_modes,
+             .nbytesNames = 0
+         };
+@@ -551,8 +617,8 @@
+         for (i = 0; i < num_modes; i++)
+             rep.nbytesNames += modes[i]->mode.nameLength;
+ 
+-        rep.length = (pScrPriv->numCrtcs +
+-                      pScrPriv->numOutputs +
++        rep.length = (numCrtcs +
++                      numOutputs +
+                       num_modes * bytes_to_int32(SIZEOF(xRRModeInfo)) +
+                       bytes_to_int32(rep.nbytesNames));
+ 
+@@ -568,55 +634,36 @@
+             extra = NULL;
+ 
+         crtcs = (RRCrtc *) extra;
+-        outputs = (RROutput *) (crtcs + pScrPriv->numCrtcs);
+-        modeinfos = (xRRModeInfo *) (outputs + pScrPriv->numOutputs);
++        outputs = (RROutput *) (crtcs + numCrtcs);
++        modeinfos = (xRRModeInfo *) (outputs + numOutputs);
+         names = (CARD8 *) (modeinfos + num_modes);
+ 
+-        if (pScrPriv->primaryOutput && pScrPriv->primaryOutput->crtc) {
++        if (primaryOutput && primaryOutput->crtc) {
+             has_primary = 1;
+-            crtcs[0] = pScrPriv->primaryOutput->crtc->id;
++            crtcs[0] = primaryOutput->crtc->id;
+             if (client->swapped)
+                 swapl(&crtcs[0]);
+         }
+ 
+-        for (i = 0; i < pScrPriv->numCrtcs; i++) {
+-            if (has_primary &&
+-                pScrPriv->primaryOutput->crtc == pScrPriv->crtcs[i]) {
++        for (i = 0; i < numCrtcs; i++) {
++            if (has_primary && primaryOutput->crtc == crtcList[i]) {
+                 has_primary = 0;
+                 continue;
+             }
+-            crtcs[i + has_primary] = pScrPriv->crtcs[i]->id;
++            crtcs[i + has_primary] = crtcList[i]->id;
+             if (client->swapped)
+                 swapl(&crtcs[i + has_primary]);
+         }
+ 
+-        for (i = 0; i < pScrPriv->numOutputs; i++) {
+-            outputs[i] = pScrPriv->outputs[i]->id;
++        for (i = 0; i < numOutputs; i++) {
++            outputs[i] = outputList[i]->id;
+             if (client->swapped)
+                 swapl(&outputs[i]);
+         }
+ 
+         for (i = 0; i < num_modes; i++) {
+-            RRModePtr mode = modes[i];
+-
+-            modeinfos[i] = mode->mode;
+-            if (client->swapped) {
+-                swapl(&modeinfos[i].id);
+-                swaps(&modeinfos[i].width);
+-                swaps(&modeinfos[i].height);
+-                swapl(&modeinfos[i].dotClock);
+-                swaps(&modeinfos[i].hSyncStart);
+-                swaps(&modeinfos[i].hSyncEnd);
+-                swaps(&modeinfos[i].hTotal);
+-                swaps(&modeinfos[i].hSkew);
+-                swaps(&modeinfos[i].vSyncStart);
+-                swaps(&modeinfos[i].vSyncEnd);
+-                swaps(&modeinfos[i].vTotal);
+-                swaps(&modeinfos[i].nameLength);
+-                swapl(&modeinfos[i].modeFlags);
+-            }
+-            memcpy(names, mode->name, mode->mode.nameLength);
+-            names += mode->mode.nameLength;
++            RRWriteModeInfo(&modeinfos[i], names, modes[i], client->swapped);
++            names += modes[i]->mode.nameLength;
+         }
+         free(modes);
+         assert(bytes_to_int32((char *) names - (char *) extra) == rep.length);
+@@ -776,7 +823,15 @@
+         if (!RRGetInfo(pScreen, TRUE))
+             return BadAlloc;
+ 
+-    output = RRFirstOutput(pScreen);
++    if (MeetingPrivacyViewActive(client, pScreen)) {
++        /* only the screen the client is allowed to see may describe itself */
++        BoxRec box;
++
++        if (!RRPrivacyAnchor(pScreen, NULL, &output, &box))
++            output = NULL;
++    }
++    else
++        output = RRFirstOutput(pScreen);
+ 
+     if (!pScrPriv || !output) {
+         rep = (xRRGetScreenInfoReply) {
+Index: xorg-server/randr/rrxinerama.c
+===================================================================
+--- xorg-server.orig/randr/rrxinerama.c
++++ xorg-server/randr/rrxinerama.c
+@@ -69,6 +69,7 @@
+  */
+ 
+ #include "randrstr.h"
++#include "../dix/dispatch.h"
+ #include "swaprep.h"
+ #include <X11/extensions/panoramiXproto.h>
+ #include "protocol-versions.h"
+@@ -176,7 +177,8 @@
+ 
+     rep = (xPanoramiXGetScreenCountReply)  {
+         .type = X_Reply,
+-        .ScreenCount = RRXineramaScreenCount(pWin->drawable.pScreen),
++        .ScreenCount = MeetingPrivacyViewActive(client, pWin->drawable.pScreen)
++            ? 1 : RRXineramaScreenCount(pWin->drawable.pScreen),
+         .sequenceNumber = client->sequence,
+         .length = 0,
+         .window = stuff->window
+@@ -280,6 +282,43 @@
+     int nmonitors = 0;
+ 
+     REQUEST_SIZE_MATCH(xXineramaQueryScreensReq);
++
++    if (MeetingPrivacyViewActive(client, pScreen)) {
++        RRCrtcPtr crtc;
++        RROutputPtr output;
++        BoxRec box;
++        xXineramaScreenInfo scratch;
++
++        if (!RRPrivacyAnchor(pScreen, &crtc, &output, NULL) ||
++            !RRPrivacyViewBox(pScreen, &box))
++            return BadMatch;
++
++        rep = (xXineramaQueryScreensReply) {
++            .type = X_Reply,
++            .sequenceNumber = client->sequence,
++            .length = bytes_to_int32(sz_XineramaScreenInfo),
++            .number = 1
++        };
++        if (client->swapped) {
++            swaps(&rep.sequenceNumber);
++            swapl(&rep.length);
++            swapl(&rep.number);
++        }
++        WriteToClient(client, sizeof(xXineramaQueryScreensReply), &rep);
++
++        scratch.x_org = box.x1;
++        scratch.y_org = box.y1;
++        scratch.width = box.x2 - box.x1;
++        scratch.height = box.y2 - box.y1;
++        if (client->swapped) {
++            swaps(&scratch.x_org);
++            swaps(&scratch.y_org);
++            swaps(&scratch.width);
++            swaps(&scratch.height);
++        }
++        WriteToClient(client, sz_XineramaScreenInfo, &scratch);
++        return Success;
++    }
+ 
+     if (RRXineramaScreenActive(pScreen)) {
+         RRGetInfo(pScreen, FALSE);

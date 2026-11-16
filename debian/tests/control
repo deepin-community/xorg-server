@@ -1,9 +1,10 @@
-Tests:
- xvfb-run,
-Depends:
- x11-utils,
+Tests: xvfb-run,
+ meetingprivacy,
+Depends: x11-utils,
+ x11-xserver-utils,
  xauth,
  xvfb,
-Restrictions:
- allow-stderr,
+ gcc,
+ libx11-dev,
+Restrictions: allow-stderr,
  superficial,

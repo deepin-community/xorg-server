@@ -1,3 +1,19 @@
+xorg-server (2:21.1.16-1deepin19) unstable; urgency=medium
+
+  * feat(randr): Meeting privacy view for non window manager clients
+    (WM-1025).  Switch it with the root property _DEEPIN_NET_MIRROR_MODE, the
+    mirror mode policy the desktop already publishes.  While it is on, every
+    client but the window manager enumerates a single screen anchored at the
+    origin and reads the primary CRTC rectangle filled with the first non
+    primary CRTC content, its own screen when nothing else is enabled.
+    XYPixmap reads of screen level drawables, screen CopyArea/CopyPlane,
+    naming the root pixmap, DRI3
+    screen pixmap export and reads of foreign windows are refused, RandR
+    configuration requests fail with BadAccess, and window level reads keep
+    the screenshot protection censor.
+
+ -- 标准-窗管-代码开发bot <bot@uniontech.com>  Sun, 16 Nov 2026 12:00:00 +0800
+
 xorg-server (2:21.1.16-1deepin18) unstable; urgency=medium
 
   * fix(composite): Avoid stale backgrounds before the first draw of

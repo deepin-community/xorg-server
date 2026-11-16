@@ -1,0 +1,145 @@
+#!/bin/sh
+# autopkgtest for the meeting-privacy mode.
+#
+# Runs the server under a private Xvfb, flips _DEEPIN_NET_MIRROR_MODE and
+# checks what a client other than the window manager may still see:
+# another client's pixels are refused, the root window and the window manager
+# keep working, and RandR keeps describing one consistent screen.
+#
+# The Xvfb of the build tree can be used instead of the installed one with
+# XVFB=/path/to/Xvfb, which is how the patch is exercised before a release.
+set -eu
+
+here=$(dirname "$0")
+XVFB=${XVFB:-Xvfb}
+
+tmp=$(mktemp -d)
+xvfb=
+probe_wm=
+cleanup() {
+    [ -n "$probe_wm" ] && kill "$probe_wm" 2>/dev/null || true
+    [ -n "$xvfb" ] && kill "$xvfb" 2>/dev/null || true
+    rm -rf "$tmp"
+}
+trap cleanup EXIT INT TERM
+
+cc -O -o "$tmp/probe" "$here/meetingprivacy-probe.c" -lX11
+probe=$tmp/probe
+
+# Let the server pick a free display: a socket left behind by a killed server
+# must not be mistaken for a live one.
+"$XVFB" -displayfd 3 -screen 0 1920x1080x24 -nolisten tcp 3>"$tmp/display" \
+    >"$tmp/xvfb.log" 2>&1 &
+xvfb=$!
+for _ in $(seq 1 50); do
+    [ -s "$tmp/display" ] && break
+    sleep 0.1
+done
+DISP=:$(cat "$tmp/display")
+export DISPLAY=$DISP
+"$probe" attrs >/dev/null 2>&1 || {
+    echo "FAIL - Xvfb did not start: $(cat "$tmp/xvfb.log")"
+    exit 1
+}
+
+fail=0
+expect() {                              # expect <description> <got> <want>
+    if [ "$2" = "$3" ]; then
+        echo "ok - $1"
+    else
+        echo "FAIL - $1: got '$2', want '$3'"
+        fail=1
+    fi
+}
+
+# expect_denied <description> <command...> — the command must fail with the
+# probe's refusal status 1; the error code is not asserted because libX11
+# drops BadAccess errors raised by GetImage.
+expect_denied() {
+    desc=$1
+    shift
+    rc=0
+    out=$("$@" 2>/dev/null) || rc=$?
+    if [ "$rc" -eq 1 ]; then
+        echo "ok - $desc"
+    else
+        echo "FAIL - $desc: expected a refusal, got exit=$rc output=$out"
+        fail=1
+    fi
+}
+
+# A window of ours, owned by the client that plays the window manager.
+"$probe" wm >"$tmp/window" 2>"$tmp/wm.log" &
+probe_wm=$!
+for _ in $(seq 1 50); do
+    [ -s "$tmp/window" ] && break
+    sleep 0.1
+done
+window=$(cat "$tmp/window")
+test -n "$window" || { echo "FAIL - no window manager window"; exit 1; }
+
+# The window manager publishes the layout on the root window; a restricted
+# client must be told the view instead.
+"$probe" setnet 4000 2000
+"$probe" setwork 0 0 4000 2000
+expect "mode off: _NET_DESKTOP_GEOMETRY reports the layout" \
+    "$("$probe" getnet)" "4000x2000"
+
+expect "mode off: another client's window is readable" \
+    "$("$probe" getimage "$window")" ALLOWED
+
+"$probe" prop 1
+# libX11 drops the BadAccess raised by GetImage, so this asserts that the read
+# is refused (no image) rather than the error code the client can see.
+expect_denied "mode on: another client's window is refused" \
+    "$probe" getimage "$window"
+expect "mode on: the root window is still readable" \
+    "$("$probe" getimage root)" ALLOWED
+expect "mode on: XYPixmap of the root window is refused" \
+    "$("$probe" getimage root xy)" "DENIED(code=8)"
+expect_denied "mode on: XYPixmap of another client's window is refused" \
+    "$probe" getimage "$window" xy
+expect "mode on: a client still reads its own window" \
+    "$("$probe" own)" ALLOWED
+expect "mode on: a client still reads its own window as planes" \
+    "$("$probe" own xy)" ALLOWED
+expect "mode on: the window manager reads its own window" \
+    "$(xrandr --query >/dev/null 2>&1 && echo ok)" ok
+
+# RandR must keep describing exactly one consistent screen for the client.
+expect "mode on: RandR lists one output" \
+    "$(xrandr --query | grep -c ' connected')" 1
+expect "mode on: RandR keeps the mode list" \
+    "$(xrandr --query | grep -c '^   [0-9]')" 1
+expect "mode on: RandR lists one monitor" \
+    "$(xrandr --listmonitors | grep -c '^ ')" 1
+expect "mode on: RandR keeps the screen size" \
+    "$(xrandr --query | head -1 | sed 's/.*current \([0-9]* x [0-9]*\).*/\1/')" \
+    "1920 x 1080"
+
+# The screen level properties must describe the view, not the layout.
+expect "mode on: _NET_DESKTOP_GEOMETRY reports the view" \
+    "$("$probe" getnet)" "1920x1080"
+expect "mode on: _NET_WORKAREA reports the view" \
+    "$("$probe" getwork)" "0,0 1920x1080"
+# A strut the window manager reserved survives, the real layout is clipped.
+"$probe" setwork 0 0 1920 1034
+expect "mode on: _NET_WORKAREA keeps the strut" \
+    "$("$probe" getwork)" "0,0 1920x1034"
+"$probe" setwork 0 0 5760 2507
+expect "mode on: _NET_WORKAREA is clipped to the view" \
+    "$("$probe" getwork)" "0,0 1920x1080"
+# A strut on the left or top edge shifts the origin; the extent must not
+# include it.
+"$probe" setwork 50 0 1870 1080
+expect "mode on: _NET_WORKAREA keeps a left strut" \
+    "$("$probe" getwork)" "0,0 1870x1080"
+"$probe" setwork 0 50 1920 1030
+expect "mode on: _NET_WORKAREA keeps a top strut" \
+    "$("$probe" getwork)" "0,0 1920x1030"
+
+"$probe" prop 0
+expect "mode off again: another client's window is readable" \
+    "$("$probe" getimage "$window")" ALLOWED
+
+exit "$fail"
