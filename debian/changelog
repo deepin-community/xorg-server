@@ -1,3 +1,15 @@
+xorg-server (2:21.1.16-1deepin17) unstable; urgency=medium
+
+  * Revert the override-redirect backing pixmap work of PR #39 and its
+    follow-up PR #51 (PMS: BUG-373551): drop
+    debian/patches/100-deepin-backing-state.patch, which gated Manual window
+    content behind _DDE_NET_WM_BACKING_PIXMAP_STATE, and
+    debian/patches/102-fix-373551.patch, which initialized Manual ARGB popup
+    backings to transparent on top of it. Composite backing behaviour is
+    back to stock xorg-server.
+
+ -- zhangdingyuan <zhangdingyuan@uniontech.com>  Mon, 16 Nov 2026 11:25:00 +0800
+
 xorg-server (2:21.1.16-1deepin16) unstable; urgency=medium
 
   * fix(composite): Avoid stale backgrounds before the first draw of
