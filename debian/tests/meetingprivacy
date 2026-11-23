@@ -23,7 +23,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-cc -O -o "$tmp/probe" "$here/meetingprivacy-probe.c" -lX11
+cc -O -o "$tmp/probe" "$here/meetingprivacy-probe.c" -lX11 -lXext
 probe=$tmp/probe
 
 # Let the server pick a free display: a socket left behind by a killed server
@@ -97,6 +97,12 @@ expect "mode on: the root window is still readable" \
     "$("$probe" getimage root)" ALLOWED
 expect "mode on: XYPixmap of the root window is refused" \
     "$("$probe" getimage root xy)" "DENIED(code=8)"
+# The view itself is what a screenshot and a screen recorder get, carrying the
+# pixels of the screen rather than a black frame.
+expect "mode on: a screen read returns the view content" \
+    "$("$probe" screen)" "255 0 0"
+expect "mode on: a recorder read returns the view content" \
+    "$("$probe" shm)" "255 0 0"
 expect_denied "mode on: XYPixmap of another client's window is refused" \
     "$probe" getimage "$window" xy
 expect "mode on: a client still reads its own window" \
