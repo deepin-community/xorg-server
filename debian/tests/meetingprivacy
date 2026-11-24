@@ -68,6 +68,21 @@ expect_denied() {
     fi
 }
 
+# expect_refused <description> <command...> — the command must fail with the
+# probe's "unreadable" status, used for what the view cannot describe.
+expect_refused() {
+    desc=$1
+    shift
+    rc=0
+    out=$("$@" 2>/dev/null) || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        echo "ok - $desc"
+    else
+        echo "FAIL - $desc: expected a refusal, got '$out'"
+        fail=1
+    fi
+}
+
 # A window of ours, owned by the client that plays the window manager.
 "$probe" wm >"$tmp/window" 2>"$tmp/wm.log" &
 probe_wm=$!
@@ -93,6 +108,10 @@ expect "mode off: another client's window is readable" \
 # is refused (no image) rather than the error code the client can see.
 expect_denied "mode on: another client's window is refused" \
     "$probe" getimage "$window"
+# The window manager is exempt from the view, its own window plus the one of
+# another client included.
+expect "mode on: the window manager keeps reading other windows" \
+    "$("$probe" wmgetimage "$window")" ALLOWED
 expect "mode on: the root window is still readable" \
     "$("$probe" getimage root)" ALLOWED
 expect "mode on: XYPixmap of the root window is refused" \
@@ -103,16 +122,26 @@ expect "mode on: a screen read returns the view content" \
     "$("$probe" screen)" "255 0 0"
 expect "mode on: a recorder read returns the view content" \
     "$("$probe" shm)" "255 0 0"
+expect "mode on: a recorder read as planes is refused" \
+    "$("$probe" shm 600 400 xy)" "DENIED(code=8)"
 expect_denied "mode on: XYPixmap of another client's window is refused" \
     "$probe" getimage "$window" xy
 expect "mode on: a client still reads its own window" \
     "$("$probe" own)" ALLOWED
 expect "mode on: a client still reads its own window as planes" \
     "$("$probe" own xy)" ALLOWED
-expect "mode on: the window manager reads its own window" \
-    "$(xrandr --query >/dev/null 2>&1 && echo ok)" ok
+expect "mode on: CopyArea out of the root window is refused" \
+    "$("$probe" copyarea root)" "DENIED(code=8)"
+expect "mode on: CopyPlane out of the root window is refused" \
+    "$("$probe" copyplane root)" "DENIED(code=8)"
+expect "mode on: CopyArea out of another client's window is refused" \
+    "$("$probe" copyarea "$window")" "DENIED(code=10)"
+expect "mode on: a client still copies its own window" \
+    "$("$probe" copyarea own)" ALLOWED
 
 # RandR must keep describing exactly one consistent screen for the client.
+expect "mode on: RandR still answers the allowed requests" \
+    "$(xrandr --query >/dev/null 2>&1 && echo ok)" ok
 expect "mode on: RandR lists one output" \
     "$(xrandr --query | grep -c ' connected')" 1
 expect "mode on: RandR keeps the mode list" \
@@ -122,6 +151,13 @@ expect "mode on: RandR lists one monitor" \
 expect "mode on: RandR keeps the screen size" \
     "$(xrandr --query | head -1 | sed 's/.*current \([0-9]* x [0-9]*\).*/\1/')" \
     "1920 x 1080"
+# GetGeometry and Xinerama describe the same single screen, at the origin.
+expect "mode on: the root window geometry is the view" \
+    "$("$probe" geom)" "1920x1080+0+0"
+expect "mode on: Xinerama reports one screen" \
+    "$(xdpyinfo -ext XINERAMA | grep -c 'head #')" 1
+expect "mode on: Xinerama reports the view at the origin" \
+    "$(xdpyinfo -ext XINERAMA | sed -n 's/.*head #0: //p')" "1920x1080 @ 0,0"
 
 # The screen level properties must describe the view, not the layout.
 expect "mode on: _NET_DESKTOP_GEOMETRY reports the view" \
@@ -135,17 +171,31 @@ expect "mode on: _NET_WORKAREA keeps the strut" \
 "$probe" setwork 0 0 5760 2507
 expect "mode on: _NET_WORKAREA is clipped to the view" \
     "$("$probe" getwork)" "0,0 1920x1080"
-# A strut on the left or top edge shifts the origin; the extent must not
-# include it.
+# A strut on the left or top edge keeps its position, only the extent that
+# falls outside the view is cut away.
 "$probe" setwork 50 0 1870 1080
 expect "mode on: _NET_WORKAREA keeps a left strut" \
-    "$("$probe" getwork)" "0,0 1870x1080"
+    "$("$probe" getwork)" "50,0 1870x1080"
 "$probe" setwork 0 50 1920 1030
 expect "mode on: _NET_WORKAREA keeps a top strut" \
-    "$("$probe" getwork)" "0,0 1920x1030"
+    "$("$probe" getwork)" "0,50 1920x1030"
 
 "$probe" prop 0
 expect "mode off again: another client's window is readable" \
     "$("$probe" getimage "$window")" ALLOWED
+
+# A view that cannot be built fails closed: with the only output turned off
+# RandR has no CRTC left, so nothing about the layout the view was cut out of
+# may reach a restricted client.
+xrandr --output screen --off 2>/dev/null || true
+"$probe" prop 1
+expect "no view: a screen read is erased" "$("$probe" screen)" "0 0 0"
+expect "no view: a recorder read is erased" "$("$probe" shm)" "0 0 0"
+expect_refused "no view: _NET_DESKTOP_GEOMETRY does not leak the layout" \
+    "$probe" getnet
+expect_refused "no view: _NET_WORKAREA does not leak the layout" \
+    "$probe" getwork
+expect_denied "no view: RandR refuses to describe the screen" xrandr --query
+"$probe" prop 0
 
 exit "$fail"
