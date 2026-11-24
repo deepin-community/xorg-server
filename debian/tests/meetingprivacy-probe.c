@@ -3,9 +3,15 @@
  *
  *   probe wm                hold the WM_Sn selection, map a window, print its
  *                           id, stay alive
+ *   probe wmgetimage W      become the window manager and read W
  *   probe prop V            set _DEEPIN_NET_MIRROR_MODE on the root window
  *   probe getimage W|root [xy]   read 16x16 pixels, print ALLOWED/DENIED
  *   probe own [xy]          map a window of our own and read it back
+ *   probe screen [X Y [xy]] read 16x16 pixels of the painted root window
+ *   probe shm [X Y [xy]]    the same through XShmGetImage
+ *   probe copyarea S        CopyArea 16x16 out of S (root, own or a window id)
+ *   probe copyplane S       CopyPlane the same way
+ *   probe geom              print the root window geometry
  *
  * Exit status is 0 for ALLOWED and 1 for DENIED so the shell test can assert
  * on either the text or the status.
@@ -32,6 +38,18 @@ onError(Display *dpy, XErrorEvent *e)
     return 0;
 }
 
+/* Exit status and text for a read: 0/ALLOWED or 1/DENIED(code) */
+static int
+report(int code)
+{
+    if (code == 0) {
+        puts("ALLOWED");
+        return 0;
+    }
+    printf("DENIED(code=%d)\n", code);
+    return 1;
+}
+
 static int
 readWindow(Display *dpy, Window win, int format)
 {
@@ -46,6 +64,32 @@ readWindow(Display *dpy, Window win, int format)
         return 0;
     }
     return lastError ? lastError : -1;
+}
+
+/* Move 16x16 pixels of S into a pixmap of our own, the way a screenshot tool
+ * that does not use GetImage does it. */
+static int
+copyWindow(Display *dpy, Window win, int plane)
+{
+    Screen *screen = DefaultScreenOfDisplay(dpy);
+    Pixmap pixmap;
+    GC gc;
+    int status;
+
+    lastError = 0;
+    pixmap = XCreatePixmap(dpy, win, 16, 16, DefaultDepthOfScreen(screen));
+    gc = XCreateGC(dpy, pixmap, 0, NULL);
+    if (plane)
+        status = XCopyPlane(dpy, win, pixmap, gc, 0, 0, 16, 16, 0, 0, 1);
+    else
+        status = XCopyArea(dpy, win, pixmap, gc, 0, 0, 16, 16, 0, 0);
+    XSync(dpy, False);
+    XFreeGC(dpy, gc);
+    XFreePixmap(dpy, pixmap);
+
+    if (lastError)
+        return lastError;
+    return status ? 0 : -1;
 }
 
 static int
@@ -92,7 +136,7 @@ printMean(XImage *image)
 /* Reads through the shared memory path a screen recorder uses.  The segment is
  * left attached, the probe exits right after the read. */
 static XImage *
-readShm(Display *dpy, Window win)
+readShm(Display *dpy, Window win, int x, int y, int format)
 {
     Screen *screen = DefaultScreenOfDisplay(dpy);
     XShmSegmentInfo shminfo;
@@ -101,12 +145,15 @@ readShm(Display *dpy, Window win)
 
     memset(&shminfo, 0, sizeof(shminfo));
     image = XShmCreateImage(dpy, DefaultVisualOfScreen(screen),
-                            (unsigned) DefaultDepthOfScreen(screen), ZPixmap,
-                            NULL, &shminfo, 16, 16);
+                            format == ZPixmap ?
+                            (unsigned) DefaultDepthOfScreen(screen) : 1,
+                            format, NULL, &shminfo, 16, 16);
     if (!image)
         return NULL;
 
-    size = (size_t) image->bytes_per_line * image->height;
+    /* XYPixmap planes need far more room than the image line size, and the
+     * server checks the segment against the request before it reads. */
+    size = 64 * 1024;
     shminfo.shmid = shmget(IPC_PRIVATE, size, IPC_CREAT | 0600);
     if (shminfo.shmid < 0)
         return NULL;
@@ -116,7 +163,7 @@ readShm(Display *dpy, Window win)
     if (shminfo.shmaddr == (char *) -1 || !XShmAttach(dpy, &shminfo))
         return NULL;
 
-    if (!XShmGetImage(dpy, win, image, 600, 400, AllPlanes)) {
+    if (!XShmGetImage(dpy, win, image, x, y, AllPlanes)) {
         XSync(dpy, False);
         return NULL;
     }
@@ -159,6 +206,24 @@ main(int argc, char **argv)
             pause();
     }
 
+    /* The window manager is exempt from the privacy view: take the selection
+     * over and read what a plain client may not read. */
+    if (argc > 2 && !strcmp(argv[1], "wmgetimage")) {
+        char name[32];
+        Atom wm;
+        Window win = (Window) strtoul(argv[2], NULL, 0);
+
+        snprintf(name, sizeof(name), "WM_S%d", DefaultScreen(dpy));
+        wm = XInternAtom(dpy, name, False);
+        XSetSelectionOwner(dpy, wm, root, CurrentTime);
+        XSync(dpy, False);
+        if (XGetSelectionOwner(dpy, wm) != root) {
+            fprintf(stderr, "probe: cannot become the window manager\n");
+            return 2;
+        }
+        return report(readWindow(dpy, win, ZPixmap));
+    }
+
     if (argc > 2 && !strcmp(argv[1], "prop")) {
         Atom atom = XInternAtom(dpy, "_DEEPIN_NET_MIRROR_MODE", False);
         long value = atol(argv[2]);
@@ -173,35 +238,48 @@ main(int argc, char **argv)
         Window win = !strcmp(argv[2], "root")
             ? root : (Window) strtoul(argv[2], NULL, 0);
         int format = (argc > 3 && !strcmp(argv[3], "xy")) ? XYPixmap : ZPixmap;
-        int code = readWindow(dpy, win, format);
 
-        if (code == 0) {
-            puts("ALLOWED");
-            return 0;
-        }
-        printf("DENIED(code=%d)\n", code);
-        return 1;
+        return report(readWindow(dpy, win, format));
     }
 
     if (argc > 1 && !strcmp(argv[1], "own")) {
         int format = (argc > 2 && !strcmp(argv[2], "xy")) ? XYPixmap : ZPixmap;
         Window win = XCreateSimpleWindow(dpy, root, 0, 0, 200, 200, 0, 0, 0);
-        int code;
 
         XMapWindow(dpy, win);
         XSync(dpy, False);
         usleep(200000);
-        code = readWindow(dpy, win, format);
-        if (code == 0) {
-            puts("ALLOWED");
-            return 0;
+        return report(readWindow(dpy, win, format));
+    }
+
+    if (argc > 1 && (!strcmp(argv[1], "copyarea") ||
+                     !strcmp(argv[1], "copyplane"))) {
+        int plane = !strcmp(argv[1], "copyplane");
+        Window win;
+
+        if (argc < 3) {
+            fprintf(stderr, "probe: %s needs a source drawable\n", argv[1]);
+            return 2;
         }
-        printf("DENIED(code=%d)\n", code);
-        return 1;
+        if (!strcmp(argv[2], "root"))
+            win = root;
+        else if (!strcmp(argv[2], "own")) {
+            win = XCreateSimpleWindow(dpy, root, 0, 0, 200, 200, 0, 0, 0);
+            XMapWindow(dpy, win);
+            XSync(dpy, False);
+            usleep(200000);
+        }
+        else
+            win = (Window) strtoul(argv[2], NULL, 0);
+
+        return report(copyWindow(dpy, win, plane));
     }
 
     if (argc > 1 && (!strcmp(argv[1], "screen") || !strcmp(argv[1], "shm"))) {
         int shm = !strcmp(argv[1], "shm");
+        int format = (argc > 4 && !strcmp(argv[4], "xy")) ? XYPixmap : ZPixmap;
+        int x = argc > 2 ? atoi(argv[2]) : 600;
+        int y = argc > 3 ? atoi(argv[3]) : 400;
         XImage *image;
 
         if (!paintRoot(dpy, root)) {
@@ -210,8 +288,8 @@ main(int argc, char **argv)
         }
 
         lastError = 0;
-        image = shm ? readShm(dpy, root)
-            : XGetImage(dpy, root, 600, 400, 16, 16, AllPlanes, ZPixmap);
+        image = shm ? readShm(dpy, root, x, y, format)
+            : XGetImage(dpy, root, x, y, 16, 16, AllPlanes, format);
         XSync(dpy, False);
 
         if (!image) {
@@ -221,6 +299,20 @@ main(int argc, char **argv)
         printMean(image);
         if (!shm)
             XDestroyImage(image);
+        return 0;
+    }
+
+    if (argc > 1 && !strcmp(argv[1], "geom")) {
+        Window child;
+        unsigned int width, height, border, depth;
+        int x, y;
+
+        if (!XGetGeometry(dpy, root, &child, &x, &y, &width, &height,
+                          &border, &depth)) {
+            fprintf(stderr, "probe: cannot read the root geometry\n");
+            return 2;
+        }
+        printf("%ux%u+%d+%d\n", width, height, x, y);
         return 0;
     }
 
@@ -299,6 +391,9 @@ main(int argc, char **argv)
         return 0;
     }
 
-    fprintf(stderr, "usage: probe wm | prop V | getimage W|root [xy] | screen | shm | own [xy] | attrs | setnet W H | getnet | setwork X Y W H | getwork\n");
+    fprintf(stderr, "usage: probe wm | wmgetimage W | prop V | getimage W|root [xy] |"
+            " own [xy] | screen [X Y [xy]] | shm [X Y [xy]] | copyarea S |"
+            " copyplane S | geom | attrs | setnet W H | getnet |"
+            " setwork X Y W H | getwork\n");
     return 2;
 }

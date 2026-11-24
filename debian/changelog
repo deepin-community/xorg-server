@@ -1,3 +1,24 @@
+xorg-server (2:21.1.16-1deepin20) unstable; urgency=medium
+
+  * fix(randr): correctness fixes for the meeting privacy view, found by
+    auditing it against the contract with KWin.  Pixel reads are clipped
+    against the anchor CRTC rectangle itself and not against the origin
+    anchored box the replies use, so a view that is not anchored at the origin
+    serves black instead of the layout next to it; _NET_DESKTOP_GEOMETRY and
+    _NET_WORKAREA answer with an empty property instead of the real layout
+    when the view cannot be built; _NET_WORKAREA keeps the struts of the
+    window manager at their position and is rebased on the view; window level
+    CopyArea keeps the screenshot protection censor while the view is on; the
+    GPU screen resources path and the hidden outputs are no longer enumerated
+    (RRGetScreenResources, RRGetCrtcInfo, RRGetOutputPrimary).
+  * test(randr): debian/tests/meetingprivacy now asserts 36 cases, adding the
+    root window geometry, Xinerama, XShmGetImage as planes, CopyArea and
+    CopyPlane, the exempt window manager, the strut position of
+    _NET_WORKAREA, and a view that cannot be built (nothing about the layout
+    leaks, reads are erased).
+
+ -- zhangdingyuan <zhangdingyuan@uniontech.com>  Tue, 24 Nov 2026 13:47:00 +0800
+
 xorg-server (2:21.1.16-1deepin19) unstable; urgency=medium
 
   * feat(randr): Meeting privacy view for non window manager clients
